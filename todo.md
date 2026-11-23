@@ -17,16 +17,19 @@ remain outside this stack.
   in a real browser; assert the portable dependency exclusions.
 - [x] Pass formatting, Clippy, workspace tests, rustdoc, and cargo-deny.
   Chromium: three smoke tests pass; portable dependency check passes.
-- [ ] Publish the first PR against `wasm`.
+- [x] Publish [the portable-core PR](https://github.com/savekirk/simile/pull/1) against `wasm`.
+  Browser, Linux, Windows, quality, and supply-chain CI pass; macOS is queued.
 
 ## Phase 2 — Shared workflows and HTTP
 
-- [ ] Share workspace composition, audit, description, baseline, replay,
+- [x] Share workspace composition, audit, description, baseline, replay,
   conformance, state, and session operations with native adapters.
-- [ ] Share listener-independent HTTP handling and webhook preparation.
-- [ ] Verify parity with controlled sources, artifacts, seeds, clocks, and signing
+- [x] Share listener-independent HTTP handling and webhook preparation.
+- [x] Verify parity with controlled sources, artifacts, seeds, clocks, and signing
   timestamps, including HTTP error and wire behavior.
-- [ ] Pass repository checks and publish the dependent PR.
+- [x] Pass formatting, Clippy, workspace tests, rustdoc, cargo-deny, and the
+  portable dependency check. Chromium passes five tests.
+- [ ] Publish the dependent PR.
 
 ## Phase 3 — WASM and Worker API
 
@@ -46,13 +49,24 @@ remain outside this stack.
   PR. This proves browser execution before committing to the API surface.
 - The existing filesystem-oriented core operations remain native in the first PR;
   the second PR extracts their shared in-memory entry points.
+- Use the portable `http` request/response types to retain validated header bytes
+  and repeated fields without carrying Axum into the browser graph.
+- HEAD now strips fallback error bodies too; this corrects native wire behavior
+  while retaining status, headers, and CLI output schemas.
+- Profile timestamps follow the service clock. Native defaults still use realtime;
+  seeded setup is available for deterministic fixtures.
+- The GitHub CLI initially resolved PR creation to the upstream repository despite
+  the explicit push remote; no PR was created there. Setting its local default to
+  `savekirk/simile` fixed publication. All branch pushes have used `origin`.
 - No user decisions are currently blocking work.
 
 ## What was achieved
 
 - Phase 1: portable feature boundaries, browser entropy and clocks, and a real
   Chromium harness are implemented. Native checks pass under Rust 1.85.
-- Phase 2: pending.
+- Phase 2: shared workspace and application operations, HTTP exchanges, webhook
+  bytes, seeded setup, and explicit session clocks are implemented. Native CLI
+  regression tests pass.
 - Phase 3: pending.
 
 ## Exit gate
@@ -60,5 +74,7 @@ remain outside this stack.
 - Phase 1: passed. Chromium compiled OpenAPI/HCL and multi-file TypeScript, decoded
   `.similec` bytes, ran a seeded operation, and exercised both clock modes. The
   resolved browser graph excludes all six prohibited dependencies.
-- Phase 2: pending shared workflow and HTTP parity checks.
+- Phase 2: passed. Named native/browser fixtures cover compilation, reports,
+  replay, conformance, state, repeated fields, HEAD, 405, error bodies, body limits,
+  and signed webhook bytes. Native listener bytes match the portable adapter.
 - Phase 3: pending binding and session lifecycle checks.

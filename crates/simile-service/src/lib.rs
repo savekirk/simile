@@ -540,6 +540,20 @@ impl Service {
         Ok(lock(&self.stack)?.snapshot()?)
     }
 
+    /// Advance a manual service clock and persist the resulting resource changes.
+    pub fn advance(&self, milliseconds: u64) -> Result<simile_stack::AdvanceReport> {
+        let mut stack = lock(&self.stack)?;
+        let before = stack.snapshot()?;
+        let report = stack.advance(milliseconds)?;
+        self.checkpoint(&mut stack, before)?;
+        Ok(report)
+    }
+
+    /// Read the service timeline without mutating state or leasing work.
+    pub fn clock(&self) -> Result<simile_stack::ClockSnapshot> {
+        Ok(self.snapshot()?.clock())
+    }
+
     fn commit(
         &self,
         execution: &OperationExecution,

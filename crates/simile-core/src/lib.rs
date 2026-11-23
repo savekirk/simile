@@ -4,7 +4,6 @@ mod build_info;
 #[cfg(feature = "native")]
 mod context;
 mod error;
-#[cfg(feature = "native")]
 pub mod ops;
 #[cfg(feature = "native")]
 mod registry;
@@ -22,3 +21,8 @@ pub use reporting::{
     ReportDiagnostic, ReportDocument, ReportKind, ReportStatus, ReportTrigger, ReportVerification,
     ReportingPreference, UpgradeRecommendation,
 };
+
+pub mod session;
+mod sources;
+mod validation;
+pub mod workspace;

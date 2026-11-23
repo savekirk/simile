@@ -1525,6 +1525,7 @@ dependencies = [
  "simile-compiler",
  "simile-hcl",
  "simile-heuristics",
+ "simile-http",
  "simile-runtime",
  "simile-service",
  "simile-spec",
@@ -1553,6 +1554,25 @@ dependencies = [
  "serde",
  "serde_json",
  "time",
+]
+
+[[package]]
+name = "simile-http"
+version = "0.4.0"
+dependencies = [
+ "form_urlencoded",
+ "http",
+ "percent-encoding",
+ "rand",
+ "serde_json",
+ "sha2",
+ "simile-artifact",
+ "simile-compiler",
+ "simile-heuristics",
+ "simile-runtime",
+ "simile-service",
+ "simile-spec",
+ "thiserror",
 ]
 
 [[package]]
@@ -1625,10 +1645,12 @@ dependencies = [
  "simile-artifact",
  "simile-compiler",
  "simile-heuristics",
+ "simile-http",
  "simile-learning",
  "simile-runtime",
  "simile-service",
  "simile-spec",
+ "simile-stack",
  "thiserror",
  "tokio",
  "tracing",
@@ -1711,12 +1733,15 @@ name = "simile-wasm"
 version = "0.4.0"
 dependencies = [
  "getrandom 0.3.4",
+ "serde_json",
  "simile-artifact",
  "simile-compiler",
  "simile-core",
  "simile-heuristics",
+ "simile-http",
  "simile-runtime",
  "simile-service",
+ "simile-spec",
  "simile-stack",
  "wasm-bindgen",
  "wasm-bindgen-test",

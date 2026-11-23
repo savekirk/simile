@@ -77,6 +77,37 @@ impl Compiler {
         })
     }
 
+    /// Compose a resolved Simfile and its external sources through one compiler.
+    /// Hosts resolve source locations; source coordination stays here.
+    pub fn compile_service(
+        &self,
+        document: &simile_hcl::ServiceDocument,
+        contract: ContractSource<'_>,
+        mut modules: Vec<simile_hcl::Module>,
+        heuristic_policy: Policy,
+    ) -> Result<CompiledService> {
+        modules.insert(0, document.inline_module.clone());
+        let mut compiled = self.compile_source_parsed(ParsedSourceCompileRequest {
+            contract,
+            modules,
+            heuristic_policy,
+        })?;
+        compiled.principal_setups = simile_hcl::compile_principal_setups(
+            document.principal_setups.clone(),
+            &compiled.contract,
+            &compiled.principals,
+        )?;
+        if let Some(description) = &document.service.description {
+            compiled.descriptions.insert(simile_spec::DescriptionEntry {
+                kind: simile_spec::DescriptionKind::Service,
+                parent: None,
+                name: document.service.name.clone(),
+                text: description.clone(),
+            });
+        }
+        Ok(compiled)
+    }
+
     pub fn compile_source(&self, request: SourceCompileRequest<'_>) -> Result<CompiledService> {
         let modules = request
             .modules

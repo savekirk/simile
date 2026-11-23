@@ -10,6 +10,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+simile-http.workspace = true
 axum.workspace = true
 futures-util.workspace = true
 form_urlencoded.workspace = true
@@ -28,6 +29,7 @@ tracing.workspace = true
 ureq.workspace = true
 
 [dev-dependencies]
+simile-stack.workspace = true
 simile-compiler.workspace = true
 simile-heuristics.workspace = true
 

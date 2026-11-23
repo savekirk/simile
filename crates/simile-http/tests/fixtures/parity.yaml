@@ -1,0 +1,49 @@
+openapi: 3.1.0
+info: { title: HTTP parity, version: 1.0.0 }
+paths:
+  /items/{id}:
+    get:
+      operationId: getItem
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - name: tag
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema: { type: array, minItems: 2, maxItems: 2, items: { type: string } }
+        - name: x-role
+          in: header
+          required: true
+          schema: { type: array, minItems: 2, maxItems: 2, items: { type: string } }
+      responses:
+        '200':
+          description: Item
+          content:
+            application/json:
+              schema: { type: object, required: [name], properties: { name: { type: string } } }
+    head:
+      operationId: headItem
+      responses:
+        '200':
+          description: Metadata
+          headers: { x-result: { schema: { type: string, const: ready } } }
+  /items:
+    post:
+      operationId: createItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name], properties: { name: { type: string } } }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { type: object, required: [id], properties: { id: { type: integer } } }
+        '400':
+          description: Invalid
+          content:
+            application/json:
+              schema: { type: object, required: [error], properties: { error: { type: string } } }

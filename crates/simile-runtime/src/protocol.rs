@@ -2,6 +2,7 @@ use simile_spec::ResponseStatus;
 
 use crate::{
     Error, ResponseSynthesisRequest, Result, Runtime, SynthesizedResponse, synthesize_response,
+    synthesize_response_with_seed,
 };
 
 impl Runtime {
@@ -69,6 +70,16 @@ impl Runtime {
         operation_key: &str,
         cause: &str,
     ) -> Result<Option<SynthesizedResponse>> {
+        self.synthesize_protocol_error_with_seed(operation_key, cause, rand::random())
+    }
+
+    /// Render a declared protocol error using the caller's deterministic seed.
+    pub fn synthesize_protocol_error_with_seed(
+        &self,
+        operation_key: &str,
+        cause: &str,
+        seed: u64,
+    ) -> Result<Option<SynthesizedResponse>> {
         let Some(mapping) = self.artifact().protocol_error(cause) else {
             return Ok(None);
         };
@@ -86,7 +97,7 @@ impl Runtime {
         let Some(status) = status else {
             return Ok(None);
         };
-        synthesize_response(
+        synthesize_response_with_seed(
             self.artifact(),
             ResponseSynthesisRequest {
                 operation: operation_key,
@@ -96,6 +107,7 @@ impl Runtime {
                 request_parameters: None,
                 body: mapping.body(),
             },
+            seed,
         )
         .map(Some)
     }

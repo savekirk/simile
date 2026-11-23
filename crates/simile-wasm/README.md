@@ -17,3 +17,12 @@ The smoke tests run inside a real headless browser. They compile OpenAPI with HC
 and multiple TypeScript declarations, decode artifact bytes, execute a seeded
 operation, and exercise manual and realtime clocks. The dependency check rejects
 native listeners, storage, networking, and Tree-sitter in the browser graph.
+
+Shared application entry points are in `simile-core::workspace`, `ops`, and
+`session`. Virtual projects use the same source discovery and Simfile composition
+as native adapters. Baseline execution uses a fresh runtime; stateful sessions use
+the shared HTTP adapter and default to manual time at the Unix epoch.
+
+The parity fixtures run unchanged in native Rust and Chromium. Native integration
+tests also compare artifact bytes, reports, setup profiles, and actual listener
+responses with their in-memory counterparts.

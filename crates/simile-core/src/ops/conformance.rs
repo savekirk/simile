@@ -1,8 +1,13 @@
+#[cfg(feature = "native")]
 use std::fs;
-use std::path::{Path, PathBuf};
+#[cfg(feature = "native")]
+use std::path::Path;
+use std::path::PathBuf;
 
 use serde::Serialize;
 
+use super::reproduce::{MemoryBundle, ReplayReport, replay_bundle};
+#[cfg(feature = "native")]
 use super::{ReplayRequest, replay};
 use crate::{Error, Result};
 
@@ -30,6 +35,7 @@ pub struct ConformanceReport {
 }
 
 /// Replay a provider's executable examples as one deterministic conformance suite.
+#[cfg(feature = "native")]
 pub fn verify_conformance(request: &ConformanceRequest) -> Result<ConformanceReport> {
     let mut bundles = Vec::new();
     for path in &request.bundles {
@@ -40,29 +46,51 @@ pub fn verify_conformance(request: &ConformanceRequest) -> Result<ConformanceRep
     if bundles.is_empty() {
         return Err(Error::NoConformanceBundles);
     }
-    let cases = bundles
+    conformance_cases(bundles.into_iter().map(|bundle| {
+        let result = replay(&ReplayRequest {
+            bundle: bundle.clone(),
+        });
+        (bundle, result)
+    }))
+}
+
+pub fn verify_bundles(bundles: &[MemoryBundle]) -> Result<ConformanceReport> {
+    let mut named = std::collections::BTreeMap::new();
+    for bundle in bundles {
+        named.entry(bundle.name.clone()).or_insert(bundle);
+    }
+    if named.is_empty() {
+        return Err(Error::NoConformanceBundles);
+    }
+    conformance_cases(
+        named
+            .into_iter()
+            .map(|(name, bundle)| (name, replay_bundle(bundle))),
+    )
+}
+
+fn conformance_cases(
+    results: impl IntoIterator<Item = (PathBuf, Result<ReplayReport>)>,
+) -> Result<ConformanceReport> {
+    let cases = results
         .into_iter()
-        .map(|bundle| {
-            match replay(&ReplayRequest {
-                bundle: bundle.clone(),
-            }) {
-                Ok(report) => ConformanceCase {
-                    bundle,
-                    operation: Some(report.operation),
-                    passed: report.matched,
-                    message: if report.matched {
-                        "response reproduced exactly".to_owned()
-                    } else {
-                        "response diverged from the recorded expectation".to_owned()
-                    },
+        .map(|(bundle, result)| match result {
+            Ok(report) => ConformanceCase {
+                bundle,
+                operation: Some(report.operation),
+                passed: report.matched,
+                message: if report.matched {
+                    "response reproduced exactly".to_owned()
+                } else {
+                    "response diverged from the recorded expectation".to_owned()
                 },
-                Err(error) => ConformanceCase {
-                    bundle,
-                    operation: None,
-                    passed: false,
-                    message: error.to_string(),
-                },
-            }
+            },
+            Err(error) => ConformanceCase {
+                bundle,
+                operation: None,
+                passed: false,
+                message: error.to_string(),
+            },
         })
         .collect::<Vec<_>>();
     let passed = cases.iter().filter(|case| case.passed).count();
@@ -74,6 +102,7 @@ pub fn verify_conformance(request: &ConformanceRequest) -> Result<ConformanceRep
     })
 }
 
+#[cfg(feature = "native")]
 fn discover(path: &Path, bundles: &mut Vec<PathBuf>) -> Result<()> {
     if path.join("bundle.json").is_file() {
         bundles.push(path.to_path_buf());

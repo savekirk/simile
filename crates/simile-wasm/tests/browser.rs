@@ -8,6 +8,29 @@ use wasm_bindgen_test::wasm_bindgen_test;
 
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
+#[path = "../../simile-core/tests/support/parity.rs"]
+mod parity;
+
+#[path = "../../simile-http/tests/support/parity.rs"]
+mod http_parity;
+
+#[wasm_bindgen_test]
+fn shared_http_bytes_and_signatures() -> Result<(), Box<dyn std::error::Error>> {
+    let service = simile_service::Service::memory_with_clock(
+        http_parity::artifact()?,
+        ClockSnapshot {
+            mode: ClockMode::Manual,
+            now: LogicalTime::from_unix_millis(1_700_000_000_000),
+        },
+    )?;
+    http_parity::exercise(&service)
+}
+
+#[wasm_bindgen_test]
+fn shared_workflows_and_http() -> Result<(), Box<dyn std::error::Error>> {
+    parity::exercise()
+}
+
 #[wasm_bindgen_test]
 fn compile_decode_and_execute() -> Result<(), Box<dyn std::error::Error>> {
     let service = Compiler::new().compile_source(SourceCompileRequest {

@@ -368,32 +368,7 @@ impl ReportingStore {
     }
 }
 
-pub(crate) fn validate_endpoint(endpoint: &str) -> Result<()> {
-    let endpoint = endpoint.trim();
-    let uri = endpoint.parse::<ureq::http::Uri>();
-    let valid = uri.as_ref().is_ok_and(|uri| {
-        let Some(authority) = uri.authority() else {
-            return false;
-        };
-        let secure = uri.scheme_str() == Some("https");
-        let local = uri.scheme_str() == Some("http")
-            && matches!(
-                authority.host(),
-                "localhost" | "127.0.0.1" | "[::1]" | "::1"
-            );
-        (secure || local)
-            && uri.path().starts_with('/')
-            && uri.path() != "/"
-            && uri.query().is_none()
-    });
-    if valid && !endpoint.ends_with('/') {
-        Ok(())
-    } else {
-        Err(Error::InvalidReportingEndpoint {
-            endpoint: endpoint.to_owned(),
-        })
-    }
-}
+pub(crate) use crate::validation::validate_endpoint;
 
 pub(crate) fn validate_contact(contact: &str) -> Result<()> {
     let contact = contact.trim();

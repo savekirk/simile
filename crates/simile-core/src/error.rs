@@ -9,6 +9,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("invalid virtual workspace: {0}")]
+    Workspace(String),
+
     #[error("could not determine the current directory")]
     CurrentDirectory(#[source] io::Error),
 

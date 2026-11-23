@@ -7,9 +7,13 @@ use simile_spec::{
     SetupIssueSource, SetupValueType, WebhookOrigin,
 };
 
+#[cfg(feature = "native")]
 use super::start::prepare_loaded_service;
+#[cfg(feature = "native")]
 use crate::registry::Registry;
+#[cfg(feature = "native")]
 use crate::service_config::{LoadedServiceConfig, ServiceConfigSource};
+#[cfg(feature = "native")]
 use crate::{Context, Result};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -33,6 +37,31 @@ pub struct DescribeServiceReport {
     pub reporting_endpoint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
+    pub operation_count: usize,
+    pub operations: Vec<DescribedOperation>,
+    pub scenarios: Vec<DescribedScenario>,
+    pub faults: Vec<DescribedFault>,
+    pub fault_profiles: Vec<DescribedFaultProfile>,
+    pub backends: Vec<DescribedBackend>,
+    pub async_operations: Vec<DescribedAsyncOperation>,
+    pub protocol_errors: Vec<DescribedProtocolError>,
+    pub webhooks: DescribedWebhookPolicy,
+    pub webhook_contracts: Vec<DescribedWebhook>,
+    pub authoring_objects: Vec<DescribedObject>,
+    pub principals: Vec<DescribedPrincipal>,
+    pub profiles: Vec<DescribedProfile>,
+    pub principal_setups: Vec<DescribedSetup>,
+}
+
+/// Artifact catalogue with no invented listener or filesystem source.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactDescription {
+    pub service: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub service_version: String,
+    pub openapi_version: String,
     pub operation_count: usize,
     pub operations: Vec<DescribedOperation>,
     pub scenarios: Vec<DescribedScenario>,
@@ -224,6 +253,7 @@ pub struct DescribedProfile {
     pub security_schemes: Vec<String>,
 }
 
+#[cfg(feature = "native")]
 pub fn describe_service(
     ctx: &Context,
     request: &DescribeServiceRequest,
@@ -293,6 +323,7 @@ pub fn describe_service(
     ))
 }
 
+#[cfg(feature = "native")]
 fn report(
     service: &str,
     verbose: bool,
@@ -302,6 +333,35 @@ fn report(
     reporting_endpoint: Option<String>,
     revision: Option<String>,
 ) -> DescribeServiceReport {
+    let catalogue = describe_artifact(artifact, service, verbose);
+    DescribeServiceReport {
+        listen,
+        source,
+        reporting_endpoint,
+        revision,
+        service: catalogue.service,
+        description: catalogue.description,
+        service_version: catalogue.service_version,
+        openapi_version: catalogue.openapi_version,
+        operation_count: catalogue.operation_count,
+        operations: catalogue.operations,
+        scenarios: catalogue.scenarios,
+        faults: catalogue.faults,
+        fault_profiles: catalogue.fault_profiles,
+        backends: catalogue.backends,
+        async_operations: catalogue.async_operations,
+        protocol_errors: catalogue.protocol_errors,
+        webhooks: catalogue.webhooks,
+        webhook_contracts: catalogue.webhook_contracts,
+        authoring_objects: catalogue.authoring_objects,
+        principals: catalogue.principals,
+        profiles: catalogue.profiles,
+        principal_setups: catalogue.principal_setups,
+    }
+}
+
+/// Describe an artifact using an optional host-supplied service label.
+pub fn describe_artifact(artifact: &Artifact, service: &str, verbose: bool) -> ArtifactDescription {
     let summary = artifact.summary();
     let operations = if verbose {
         artifact
@@ -521,7 +581,7 @@ fn report(
         })
         .collect();
 
-    DescribeServiceReport {
+    ArtifactDescription {
         service: service.to_owned(),
         description: artifact
             .description(DescriptionKind::Service, None, service)
@@ -529,10 +589,6 @@ fn report(
             .or_else(|| artifact.service_description().map(str::to_owned)),
         service_version: summary.service_version,
         openapi_version: summary.openapi_version,
-        listen,
-        source,
-        reporting_endpoint,
-        revision,
         operation_count: summary.operations,
         operations,
         scenarios,
