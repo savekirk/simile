@@ -9,6 +9,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("invalid session checkpoint: {0}")]
+    Checkpoint(String),
+
+    #[error("work handle is unknown, expired, or belongs to an earlier session generation")]
+    WorkHandle,
+
     #[error("invalid virtual workspace: {0}")]
     Workspace(String),
 

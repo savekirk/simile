@@ -4,3 +4,7 @@
 *.swp
 *.swo
 .DS_Store
+
+/crates/simile-wasm/pkg/
+/crates/simile-wasm/dist/
+/crates/simile-wasm/node_modules/

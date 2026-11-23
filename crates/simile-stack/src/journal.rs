@@ -67,7 +67,6 @@ pub struct Journal {
 }
 
 impl Journal {
-    #[cfg(feature = "persistence")]
     pub(crate) fn from_entries(entries: Vec<JournalEntry>) -> Self {
         Self { entries }
     }
