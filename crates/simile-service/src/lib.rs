@@ -12,9 +12,13 @@ mod state;
 mod work;
 
 use std::collections::BTreeMap;
+#[cfg(feature = "persistence")]
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(target_arch = "wasm32")]
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use simile_artifact::Artifact;
 use simile_runtime::{
@@ -24,9 +28,11 @@ use simile_runtime::{
 use simile_spec::ResourceKind;
 use simile_stack::{
     CommandMetadata, DbCommand, JournalOutcome, LogicalTime, MemoryStateStore, QueueCommand,
-    QueueResult, RedbStateStore, ResourceAddress, ResourceError, Stack, StackCommand, StackResult,
-    StackSnapshot, StateIdentity, StateStore, StateStoreError, WriteCondition,
+    QueueResult, ResourceAddress, ResourceError, Stack, StackCommand, StackResult, StackSnapshot,
+    StateStore, StateStoreError, WriteCondition,
 };
+#[cfg(feature = "persistence")]
+use simile_stack::{RedbStateStore, StateIdentity};
 use thiserror::Error;
 
 pub use profile::{
@@ -79,7 +85,17 @@ impl Service {
         Self::with_store(artifact, Arc::new(MemoryStateStore::default()))
     }
 
+    /// Build an isolated service with an explicit clock, including a manual clock
+    /// that never reads the host's wall or monotonic time.
+    pub fn memory_with_clock(
+        artifact: Artifact,
+        clock: simile_stack::ClockSnapshot,
+    ) -> Result<Self> {
+        Self::with_store_and_clock(artifact, Arc::new(MemoryStateStore::default()), clock)
+    }
+
     /// Build a service whose complete Stack survives process restarts.
+    #[cfg(feature = "persistence")]
     pub fn durable(artifact: Artifact, path: impl AsRef<Path>) -> Result<Self> {
         let summary = artifact.summary();
         let identity = StateIdentity::new(summary.service, summary.payload_sha256);
@@ -92,6 +108,22 @@ impl Service {
     /// A durable caller normally supplies `RedbStateStore`; tests and one-shot
     /// tools can use `MemoryStateStore` without changing execution semantics.
     pub fn with_store(artifact: Artifact, store: Arc<dyn StateStore>) -> Result<Self> {
+        Self::with_store_and_clock(
+            artifact,
+            store,
+            simile_stack::ClockSnapshot {
+                mode: simile_stack::ClockMode::Realtime,
+                now: now(),
+            },
+        )
+    }
+
+    /// Restore an existing store or initialize it using the supplied clock.
+    pub fn with_store_and_clock(
+        artifact: Artifact,
+        store: Arc<dyn StateStore>,
+        clock: simile_stack::ClockSnapshot,
+    ) -> Result<Self> {
         let mut resources = artifact
             .resources()
             .map(|resource| ResourceAddress::new(resource.kind(), resource.name()))
@@ -103,7 +135,11 @@ impl Service {
             ResourceKind::Db,
             profile::PROFILE_STATE,
         )?);
-        let initial = Stack::realtime(now()).resources(resources)?.build()?;
+        let builder = match clock.mode {
+            simile_stack::ClockMode::Manual => simile_stack::StackBuilder::manual(clock.now),
+            simile_stack::ClockMode::Realtime => Stack::realtime(clock.now),
+        };
+        let initial = builder.resources(resources)?.build()?;
         let stack = match store.load()? {
             Some(snapshot) => {
                 let mut restored = Stack::from_snapshot(snapshot);

@@ -9,6 +9,10 @@ authors.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+default = ["persistence"]
+persistence = ["simile-stack/persistence"]
+
 [dependencies]
 rand.workspace = true
 serde.workspace = true
@@ -23,6 +27,9 @@ thiserror.workspace = true
 [dev-dependencies]
 simile-compiler.workspace = true
 simile-heuristics.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time.workspace = true
 
 [lints]
 workspace = true
