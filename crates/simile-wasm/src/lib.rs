@@ -91,6 +91,10 @@ impl ArtifactHandle {
         }
         let routes = self.artifact.operations().map(|operation| serde_json::json!({
             "key": operation.key(), "method": operation.method(), "path": operation.path(), "operationId": operation.operation_id(),
+            "parameters": operation.parameters().map(|parameter| serde_json::json!({
+                "name": parameter.name(), "location": parameter.location(), "required": parameter.is_required(),
+                "style": parameter.style(), "explode": parameter.explode(), "allowReserved": parameter.allow_reserved(),
+            })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>();
         to_js(&serde_json::json!({
             "revision": summary.payload_sha256, "formatVersion": summary.format_version,

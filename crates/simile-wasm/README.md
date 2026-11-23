@@ -36,6 +36,8 @@ in Chromium. Generated `pkg/` and `dist/` directories are ignored.
 Use `web/client.ts` with a module Worker built from `web/worker.ts`. The client
 serializes calls and tracks the Worker generation. `web/contract.ts` defines the
 request and response types; invalid message envelopes are rejected before dispatch.
+Routes include parameter names, locations, required flags, and serialization rules.
+Request synthesis produces body fixtures; parameter values remain caller inputs.
 For example, compile a workspace, then explicitly start its immutable revision:
 
 ```ts

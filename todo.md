@@ -42,7 +42,7 @@ remain outside this stack.
 - [x] Implement atomic imports, reset, and compatible checkpoint restoration with
   fresh runtime state and invalidated work handles.
 - [x] Verify boundary values, CLI Smithy artifacts, and session lifecycle in a browser.
-  Chromium passes five shared Rust tests and 104 Worker assertions; native lifecycle
+  Chromium passes five shared Rust tests and 112 Worker assertions; native lifecycle
   tests cover snapshot equality, lease visibility, and invalid imports.
 - [x] Pass formatting, Clippy, workspace tests, rustdoc, cargo-deny, and the
   portable dependency check under Rust 1.85. TypeScript compiles in strict mode.
@@ -108,3 +108,5 @@ remain outside this stack.
   nested payload integers, absent/null bodies, typed bytes/maps, repeated headers,
   native Smithy artifacts, invalid imports, checkpoint compatibility, dynamic
   profiles, stale handles/generations, lease recovery, and fresh replay/fault state.
+  Request synthesis feeds baseline execution; causal work completion and delayed
+  retry run through the exported API.

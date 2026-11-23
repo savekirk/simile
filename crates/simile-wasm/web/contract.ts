@@ -11,7 +11,8 @@ export interface Workspace {
   heuristicPolicy?: "standard" | "off" | "conservative" | "aggressive";
 }
 export interface Diagnostic { code: string; message: string; file?: string }
-export interface Route { key: string; method: string; path: string; operationId: string | null }
+export interface Parameter { name: string; location: "path" | "query" | "header" | "cookie"; required: boolean; style: string; explode: boolean; allowReserved: boolean }
+export interface Route { key: string; method: string; path: string; operationId: string | null; parameters: Parameter[] }
 export interface NamedDescription { name: string; description?: string }
 export interface OperationDescription {
   key: string; operationId?: string; description?: string; behaviorSource: string; secured: boolean;
