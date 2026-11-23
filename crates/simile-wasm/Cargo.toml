@@ -22,7 +22,7 @@ simile-service.workspace = true
 simile-stack.workspace = true
 wasm-bindgen.workspace = true
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "=0.3.4", features = ["wasm_js"] }
 
 [dev-dependencies]

@@ -28,7 +28,7 @@ thiserror.workspace = true
 simile-compiler.workspace = true
 simile-heuristics.workspace = true
 
-[target.'cfg(target_arch = "wasm32")'.dependencies]
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 web-time.workspace = true
 
 [lints]
