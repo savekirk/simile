@@ -42,16 +42,21 @@ remain outside this stack.
 - [x] Implement atomic imports, reset, and compatible checkpoint restoration with
   fresh runtime state and invalidated work handles.
 - [x] Verify boundary values, CLI Smithy artifacts, and session lifecycle in a browser.
-  Chromium passes five shared Rust tests and 102 Worker assertions; native lifecycle
+  Chromium passes five shared Rust tests and 104 Worker assertions; native lifecycle
   tests cover snapshot equality, lease visibility, and invalid imports.
 - [x] Pass formatting, Clippy, workspace tests, rustdoc, cargo-deny, and the
   portable dependency check under Rust 1.85. TypeScript compiles in strict mode.
-- [ ] Publish the dependent PR, inspect CI, and verify all three published PR bases.
+- [x] Publish [the WASM API PR](https://github.com/savekirk/simile/pull/4) against
+  `browser/shared-workflows`; verify all three bases and keep the PRs open.
+- [ ] Inspect the final fork CI results.
 
 ## Decisions and tradeoffs
 
 - Preserve default native crate behavior; portable consumers explicitly disable
   native features. The CLI explicitly enables its native feature set.
+- Browser clocks and entropy are gated to `wasm32-unknown-unknown`, excluding WASI.
+  The correction was verified in the portable-core branch, then the dependent
+  branches were rebased bottom-up without conflicts and their gates rerun.
 - Smithy source compilation stays native because its Tree-sitter parser requires
   a separate port. Portable builds retain a clear diagnostic and can load artifacts.
 - Use a small WASM test host now and grow it into the public bindings in the third

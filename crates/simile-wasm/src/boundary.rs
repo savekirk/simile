@@ -21,6 +21,9 @@ pub fn error(code: &str, error: impl std::fmt::Display) -> JsValue {
 }
 
 pub fn core_error(value: simile_core::Error) -> JsValue {
+    if let simile_core::Error::Artifact(value) = value {
+        return artifact_error(value);
+    }
     let code = match &value {
         simile_core::Error::Compile(simile_compiler::Error::UnsupportedSource { .. }) => {
             "unsupported_source"
@@ -47,6 +50,19 @@ pub fn core_error(value: simile_core::Error) -> JsValue {
         file,
     })
     .unwrap_or_else(|_| JsValue::from_str("could not serialize diagnostic"))
+}
+
+pub fn artifact_error(value: simile_artifact::Error) -> JsValue {
+    if let simile_artifact::Error::UnsupportedFormat(found) = value {
+        return error(
+            "artifact_incompatible",
+            format!(
+                "artifact format {found} is unsupported; this engine supports {}. Recompile with a matching CLI or update the browser engine",
+                simile_artifact::FORMAT_VERSION
+            ),
+        );
+    }
+    error("artifact_incompatible", value)
 }
 
 pub fn to_js(value: &impl Serialize) -> Result<JsValue> {

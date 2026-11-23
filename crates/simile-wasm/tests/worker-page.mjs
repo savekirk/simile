@@ -78,6 +78,13 @@ async function main() {
     check(decode((await client.call("exportCheckpoint", {})).bytes) === originalCheckpoint, "incompatible checkpoint mutated active state");
   }
   await rejects(() => client.call("loadArtifact", { bytes: encode("broken") }), "artifact_incompatible");
+  const unsupported = artifact.bytes.slice();
+  new DataView(unsupported.buffer).setUint16(8, 65535);
+  const versionError = await raw({ id: "format-test", generation, method: "loadArtifact", input: { bytes: unsupported } });
+  check(!versionError.ok && versionError.error.code === "artifact_incompatible" && versionError.error.message.includes("65535") && versionError.error.message.includes(String(artifact.formatVersion)) && versionError.error.message.includes("Recompile"), "format diagnostic needs found/supported versions and a remedy");
+  const corrupted = artifact.bytes.slice();
+  corrupted[corrupted.length - 1] ^= 1;
+  await rejects(() => client.call("loadArtifact", { bytes: corrupted }), "artifact_incompatible");
   await rejects(() => client.call("restoreCheckpoint", { bytes: encode("broken") }), "checkpoint_incompatible");
   check(decode((await client.call("exportCheckpoint", {})).bytes) === originalCheckpoint, "invalid import mutated active state");
   await rejects(() => client.call("compileWorkspace", { files: { "bad.yaml": "not openapi" }, contractEntry: "bad.yaml" }), "compile_error");

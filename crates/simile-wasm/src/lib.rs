@@ -7,7 +7,9 @@ mod boundary;
 mod session;
 pub use session::BrowserSession;
 
-use boundary::{BundleFiles, ReportView, Result, core_error, error, from_js, json, seed, to_js};
+use boundary::{
+    BundleFiles, ReportView, Result, artifact_error, core_error, error, from_js, json, seed, to_js,
+};
 use serde::{Deserialize, Serialize};
 use simile_core::{ops, workspace};
 use wasm_bindgen::prelude::*;
@@ -32,8 +34,7 @@ pub fn compile_workspace(input: JsValue) -> Result<ArtifactHandle> {
 
 #[wasm_bindgen(js_name = loadArtifact)]
 pub fn load_artifact(bytes: &[u8]) -> Result<ArtifactHandle> {
-    let artifact =
-        simile_artifact::decode(bytes).map_err(|value| error("artifact_incompatible", value))?;
+    let artifact = simile_artifact::decode(bytes).map_err(artifact_error)?;
     Ok(ArtifactHandle {
         bytes: bytes.to_vec(),
         artifact,
