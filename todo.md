@@ -48,7 +48,10 @@ remain outside this stack.
   portable dependency check under Rust 1.85. TypeScript compiles in strict mode.
 - [x] Publish [the WASM API PR](https://github.com/savekirk/simile/pull/4) against
   `browser/shared-workflows`; verify all three bases and keep the PRs open.
-- [ ] Inspect the final fork CI results.
+- [x] Inspect the final fork CI results. All six jobs pass on each implementation
+  revision: [portable core](https://github.com/savekirk/simile/actions/runs/45288474136),
+  [shared workflows](https://github.com/savekirk/simile/actions/runs/45288472817), and
+  [WASM API](https://github.com/savekirk/simile/actions/runs/45288997179).
 
 ## Decisions and tradeoffs
 
@@ -104,7 +107,7 @@ remain outside this stack.
 - Phase 2: passed. Named native/browser fixtures cover compilation, reports,
   replay, conformance, state, repeated fields, HEAD, 405, error bodies, body limits,
   and signed webhook bytes. Native listener bytes match the portable adapter.
-- Phase 3: passed locally. The module Worker covers decimal integer boundaries,
+- Phase 3: passed locally and in CI. The module Worker covers decimal integer boundaries,
   nested payload integers, absent/null bodies, typed bytes/maps, repeated headers,
   native Smithy artifacts, invalid imports, checkpoint compatibility, dynamic
   profiles, stale handles/generations, lease recovery, and fresh replay/fault state.
