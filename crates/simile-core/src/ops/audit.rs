@@ -1,13 +1,18 @@
 use std::collections::BTreeSet;
+#[cfg(feature = "native")]
 use std::fs;
+#[cfg(feature = "native")]
 use std::path::PathBuf;
 
 use serde::Serialize;
 use simile_spec::{EffectOrigin, ParameterLocation, ProfileStatus, SecurityScheme};
 
-use crate::{Error, Result};
+#[cfg(feature = "native")]
+use crate::Error;
+use crate::Result;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg(feature = "native")]
 pub struct AuditRequest {
     pub artifact: PathBuf,
 }
@@ -54,12 +59,18 @@ pub struct AuditReport {
 /// This is deliberately an explainable audit, not a single opaque score. A
 /// provider can fix each finding without learning Simile's internal compiler
 /// decisions, and CI can fail only on the severities that matter to it.
+#[cfg(feature = "native")]
 pub fn audit(request: &AuditRequest) -> Result<AuditReport> {
     let encoded = fs::read(&request.artifact).map_err(|source| Error::ReadArtifact {
         path: request.artifact.clone(),
         source,
     })?;
     let artifact = simile_artifact::decode(&encoded)?;
+    audit_artifact(&artifact)
+}
+
+/// Audit a decoded artifact without filesystem access.
+pub fn audit_artifact(artifact: &simile_artifact::Artifact) -> Result<AuditReport> {
     let summary = artifact.summary();
     let mut findings = Vec::new();
     let effects = artifact.effects().collect::<Vec<_>>();

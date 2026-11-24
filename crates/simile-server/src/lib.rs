@@ -7,7 +7,6 @@ mod proxy;
 pub use process::CommandResult;
 pub use proxy::{ProxyOptions, ProxyServer};
 
-use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddr};
@@ -18,23 +17,18 @@ use std::time::{Duration, Instant};
 use axum::Router;
 use axum::body::{Body, Bytes, HttpBody, to_bytes};
 use axum::extract::{ConnectInfo, State};
-use axum::http::header::{ALLOW, CONTENT_TYPE, COOKIE, USER_AGENT};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode};
+use axum::http::header::{CONTENT_TYPE, USER_AGENT};
+use axum::http::{HeaderMap, Method, Request, StatusCode};
 use axum::middleware::{self, Next};
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use futures_util::stream;
-use serde_json::json;
 use simile_artifact::Artifact;
-use simile_runtime::{
-    ExecutionOptions, IncomingParameters, OperationCall, OperationExecution, ReplayIdentity,
-    Runtime, TransportPlan, validate_parameters,
-};
+use simile_http::RouteTable;
+use simile_runtime::TransportPlan;
 use simile_service::Service;
 use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
-
-const DEFAULT_BODY_LIMIT: usize = 8 * 1024 * 1024;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -95,22 +89,7 @@ pub struct ServerOptions {
     pub incident_sender: Option<mpsc::Sender<RuntimeIncident>>,
 }
 
-/// Sanitized evidence for one internal runtime failure that may become an automatic report.
-#[derive(Clone, Debug)]
-pub struct RuntimeIncident {
-    pub profile: Option<String>,
-    pub operation: String,
-    pub seed: u64,
-    pub content_type: Option<String>,
-    pub body: Vec<u8>,
-    pub parameters: IncomingParameters,
-    pub scenario: Option<String>,
-    pub fault_profile: Option<String>,
-    pub code: String,
-    pub message: String,
-    pub issues: Vec<serde_json::Value>,
-}
-
+pub use simile_http::RuntimeIncident;
 pub struct Server {
     listener: TcpListener,
     router: Router,
@@ -123,41 +102,10 @@ struct ServerState {
     service: Arc<Service>,
     routes: RouteTable,
     body_limit: usize,
+    response_seed: Option<u64>,
     scenario: Option<String>,
     fault_profile: Option<String>,
     incident_sender: Option<mpsc::Sender<RuntimeIncident>>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RouteTable {
-    routes: Vec<Route>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct Route {
-    method: String,
-    path: PathTemplate,
-    operation: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct PathTemplate {
-    segments: Vec<PathSegment>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum PathSegment {
-    Literal(String),
-    Parameter(String),
-}
-
-enum Match<'a> {
-    Operation {
-        operation: &'a str,
-        path: BTreeMap<String, Vec<String>>,
-    },
-    MethodNotAllowed(BTreeSet<&'a str>),
-    NotFound,
 }
 
 struct AccessLine<'a> {
@@ -221,6 +169,26 @@ impl Server {
         service: Service,
         options: ServerOptions,
     ) -> Result<Self> {
+        Self::bind_service_with_http_options(
+            address,
+            service,
+            simile_http::HttpOptions {
+                scenario: options.scenario,
+                fault_profile: options.fault_profile,
+                ..Default::default()
+            },
+            options.incident_sender,
+        )
+        .await
+    }
+
+    /// Bind with explicit HTTP controls for reproducible embeddings and parity fixtures.
+    pub async fn bind_service_with_http_options(
+        address: SocketAddr,
+        service: Service,
+        options: simile_http::HttpOptions,
+        incident_sender: Option<mpsc::Sender<RuntimeIncident>>,
+    ) -> Result<Self> {
         let artifact = service.artifact();
         if let Some(name) = options.scenario.as_deref() {
             if !artifact.has_scenario(name) {
@@ -254,10 +222,11 @@ impl Server {
         let state = Arc::new(ServerState {
             service: Arc::clone(&service),
             routes,
-            body_limit: DEFAULT_BODY_LIMIT,
+            body_limit: options.body_limit,
+            response_seed: options.response_seed,
             scenario: options.scenario,
             fault_profile: options.fault_profile,
-            incident_sender: options.incident_sender,
+            incident_sender,
         });
         let router = Router::new()
             .fallback(handle)
@@ -354,104 +323,6 @@ fn write_label(formatter: &mut fmt::Formatter<'_>, value: Option<&str>) -> fmt::
     }
 }
 
-impl RouteTable {
-    fn new(artifact: &Artifact) -> Self {
-        let mut routes = artifact
-            .operations()
-            .map(|operation| Route {
-                method: operation.method().to_owned(),
-                path: PathTemplate::parse(operation.path()),
-                operation: operation.key().to_owned(),
-            })
-            .collect::<Vec<_>>();
-        routes.sort_by(|left, right| {
-            right
-                .path
-                .literal_count()
-                .cmp(&left.path.literal_count())
-                .then_with(|| left.operation.cmp(&right.operation))
-        });
-        Self { routes }
-    }
-
-    fn find(&self, method: &Method, path: &str) -> Match<'_> {
-        let mut allowed = BTreeSet::new();
-        for route in &self.routes {
-            let Some(parameters) = route.path.match_and_capture(path) else {
-                continue;
-            };
-            if route.method == method.as_str() {
-                return Match::Operation {
-                    operation: &route.operation,
-                    path: parameters,
-                };
-            }
-            allowed.insert(route.method.as_str());
-        }
-        if allowed.is_empty() {
-            Match::NotFound
-        } else {
-            Match::MethodNotAllowed(allowed)
-        }
-    }
-}
-
-impl PathTemplate {
-    fn parse(path: &str) -> Self {
-        let segments = split_path(path)
-            .map(|segment| {
-                if segment.starts_with('{') && segment.ends_with('}') {
-                    PathSegment::Parameter(
-                        segment
-                            .trim_start_matches('{')
-                            .trim_end_matches('}')
-                            .to_owned(),
-                    )
-                } else {
-                    PathSegment::Literal(segment.to_owned())
-                }
-            })
-            .collect();
-        Self { segments }
-    }
-
-    fn match_and_capture(&self, path: &str) -> Option<BTreeMap<String, Vec<String>>> {
-        let actual = split_path(path).collect::<Vec<_>>();
-        if self.segments.len() != actual.len() {
-            return None;
-        }
-        let mut captured = BTreeMap::new();
-        for (expected, actual) in self.segments.iter().zip(actual) {
-            match expected {
-                PathSegment::Literal(expected) if expected == actual => {}
-                PathSegment::Literal(_) => return None,
-                PathSegment::Parameter(name) if !actual.is_empty() => {
-                    let decoded = percent_encoding::percent_decode_str(actual)
-                        .decode_utf8()
-                        .ok()?
-                        .into_owned();
-                    captured.insert(name.clone(), vec![decoded]);
-                }
-                PathSegment::Parameter(_) => return None,
-            }
-        }
-        Some(captured)
-    }
-
-    fn literal_count(&self) -> usize {
-        self.segments
-            .iter()
-            .filter(|segment| matches!(segment, PathSegment::Literal(_)))
-            .count()
-    }
-}
-
-fn split_path(path: &str) -> impl Iterator<Item = &str> {
-    path.trim_matches('/')
-        .split('/')
-        .filter(|part| !part.is_empty())
-}
-
 async fn access_log(request: Request<Body>, next: Next) -> Response {
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
@@ -503,547 +374,65 @@ fn text_header(headers: &HeaderMap, name: &str) -> Option<String> {
 }
 
 async fn handle(State(state): State<Arc<ServerState>>, request: Request<Body>) -> Response {
-    let method = request.method().clone();
-    let uri = request.uri().clone();
-    let (operation, path_parameters) = match state.routes.find(&method, uri.path()) {
-        Match::Operation { operation, path } => (operation.to_owned(), path),
-        Match::MethodNotAllowed(methods) => return method_not_allowed(methods),
-        Match::NotFound => {
-            return error_response(StatusCode::NOT_FOUND, "not_found", "route not found");
-        }
-    };
-    let incoming = incoming_parameters(&request, path_parameters);
-    let authentication = match state.service.authenticate(&operation, &incoming) {
-        Ok(authentication) => authentication,
-        Err(simile_service::Error::Runtime(error)) => {
-            return operation_error(
-                state.service.runtime(),
-                &operation,
-                error,
-                method == Method::HEAD,
-            );
-        }
-        Err(error) => {
-            tracing::error!(target: "simile::auth", %operation, %error, "could not read service profiles");
-            return error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "profile_state_unavailable",
-                "service profile state is unavailable",
-            );
-        }
-    };
-    let parameters = match validate_parameters(state.service.artifact(), &operation, &incoming) {
-        Ok(parameters) => parameters,
-        Err(error) => {
-            return operation_error(
-                state.service.runtime(),
-                &operation,
-                error,
-                method == Method::HEAD,
-            );
-        }
-    };
-    let content_type = match header(request.headers(), CONTENT_TYPE.as_str()) {
-        Ok(value) => value,
-        Err(response) => return response,
-    };
-    let idempotency_key = match header(request.headers(), "idempotency-key") {
-        Ok(value) => value,
-        Err(response) => return response,
-    };
-    let resource_identity = uri.to_string();
-    let body = match to_bytes(request.into_body(), state.body_limit).await {
-        Ok(body) => body,
-        Err(_) => {
-            return error_response(
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "request_too_large",
-                "request body exceeds the configured limit",
-            );
-        }
-    };
-    let replay = idempotency_key
-        .as_deref()
-        .map(ReplayIdentity::IdempotencyKey)
-        .or_else(|| {
-            (method == Method::GET).then_some(ReplayIdentity::Resource(&resource_identity))
-        });
-    let response_seed = rand::random::<u64>();
-    let profile = authentication.profile().map(str::to_owned);
-    let outcome = state.service.execute_for_profile_with_options(
-        OperationCall {
-            operation: &operation,
-            content_type: content_type.as_deref(),
-            body: &body,
-        },
-        ExecutionOptions {
-            parameters: Some(&parameters),
-            replay,
-            scenario: state.scenario.as_deref(),
-            fault_profile: state.fault_profile.as_deref(),
-            response_seed: Some(response_seed),
-            ..ExecutionOptions::default()
-        },
-        profile.as_deref(),
-    );
-    match outcome {
-        Ok(execution) => operation_execution_response(execution, method == Method::HEAD).await,
-        Err(simile_service::Error::Runtime(error)) => {
-            emit_incident(
-                &state,
-                profile,
-                &operation,
-                response_seed,
-                content_type,
-                &body,
-                incoming,
-                &error,
-            );
-            operation_error(
-                state.service.runtime(),
-                &operation,
-                error,
-                method == Method::HEAD,
-            )
-        }
-        Err(error) => {
-            tracing::error!(target: "simile::effect", %operation, %error, "could not apply operation effects");
-            error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "effect_failed",
-                "the operation completed but its declared effects could not be committed",
-            )
-        }
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn emit_incident(
-    state: &ServerState,
-    profile: Option<String>,
-    operation: &str,
-    seed: u64,
-    content_type: Option<String>,
-    body: &[u8],
-    parameters: IncomingParameters,
-    error: &simile_runtime::Error,
-) {
-    if !error.is_reportable() {
-        return;
-    }
-    let Some(sender) = state.incident_sender.as_ref() else {
-        return;
-    };
-    let Some(body) = sanitize_body(content_type.as_deref(), body) else {
-        tracing::debug!(
-            target: "simile::reporting",
-            operation,
-            content_type,
-            "automatic report skipped because the request body cannot be safely sanitized"
-        );
-        return;
-    };
-    let incident = RuntimeIncident {
-        profile,
-        operation: operation.to_owned(),
-        seed,
-        content_type,
-        body,
-        parameters: sanitize_parameters(parameters),
+    let (parts, body) = request.into_parts();
+    let options = simile_http::HttpOptions {
+        body_limit: state.body_limit,
         scenario: state.scenario.clone(),
         fault_profile: state.fault_profile.clone(),
-        code: error.code().to_owned(),
-        message: error.to_string(),
-        issues: error
-            .issues()
-            .iter()
-            .filter_map(|issue| serde_json::to_value(issue).ok())
-            .collect(),
+        response_seed: state.response_seed,
     };
-    if let Err(error) = sender.try_send(incident) {
-        tracing::debug!(
-            target: "simile::reporting",
-            %error,
-            "automatic report skipped because the reporting queue is unavailable"
-        );
-    }
-}
-
-fn sanitize_parameters(mut parameters: IncomingParameters) -> IncomingParameters {
-    redact_parameter_map(&mut parameters.path);
-    redact_parameter_map(&mut parameters.query);
-    redact_parameter_map(&mut parameters.headers);
-    redact_parameter_map(&mut parameters.cookies);
-    parameters
-}
-
-fn redact_parameter_map(values: &mut BTreeMap<String, Vec<String>>) {
-    for (name, values) in values {
-        if sensitive_name(name) {
-            values.clear();
-            values.push("<redacted>".to_owned());
-        }
-    }
-}
-
-fn sanitize_body(content_type: Option<&str>, body: &[u8]) -> Option<Vec<u8>> {
-    if body.is_empty() {
-        return Some(Vec::new());
-    }
-    let media_type = content_type?.split(';').next()?.trim();
-    if media_type != "application/json" && !media_type.ends_with("+json") {
-        return None;
-    }
-    let mut value = serde_json::from_slice::<serde_json::Value>(body).ok()?;
-    redact_json(&mut value);
-    serde_json::to_vec(&value).ok()
-}
-
-fn redact_json(value: &mut serde_json::Value) {
-    match value {
-        serde_json::Value::Object(object) => {
-            for (name, value) in object {
-                if sensitive_name(name) {
-                    *value = serde_json::Value::String("<redacted>".to_owned());
-                } else {
-                    redact_json(value);
-                }
+    let prepared =
+        match simile_http::prepare_request_head(&state.service, &state.routes, &parts, &options) {
+            Ok(prepared) => prepared,
+            Err(exchange) => return send_exchange(*exchange).await,
+        };
+    let body = match to_bytes(body, state.body_limit).await {
+        Ok(bytes) => simile_http::RequestBody::Bytes(bytes.to_vec()),
+        Err(_) => simile_http::RequestBody::TooLarge,
+    };
+    let mut exchange = prepared.handle_body(body);
+    if let Some(incident) = exchange.incident.take() {
+        if let Some(sender) = &state.incident_sender {
+            if let Err(error) = sender.try_send(incident) {
+                tracing::debug!(target: "simile::reporting", %error, "automatic report skipped because the reporting queue is unavailable");
             }
         }
-        serde_json::Value::Array(values) => values.iter_mut().for_each(redact_json),
-        _ => {}
     }
+    if let Some(fault) = &exchange.fault {
+        tracing::info!(target: "simile::fault", operation = exchange.operation, fault = fault.name(), source = ?fault.source(), phase = ?fault.phase(), "activated environmental fault");
+    }
+    send_exchange(exchange).await
 }
 
-fn sensitive_name(name: &str) -> bool {
-    let normalized = name.to_ascii_lowercase().replace(['-', '.'], "_");
-    [
-        "authorization",
-        "cookie",
-        "password",
-        "secret",
-        "token",
-        "api_key",
-        "apikey",
-        "access_key",
-        "private_key",
-        "card_number",
-        "account_number",
-        "cvc",
-        "cvv",
-    ]
-    .iter()
-    .any(|sensitive| normalized == *sensitive || normalized.ends_with(&format!("_{sensitive}")))
-}
-
-fn incoming_parameters(
-    request: &Request<Body>,
-    path: BTreeMap<String, Vec<String>>,
-) -> IncomingParameters {
-    let mut query = BTreeMap::<String, Vec<String>>::new();
-    if let Some(raw) = request.uri().query() {
-        for (name, value) in form_urlencoded::parse(raw.as_bytes()) {
-            query
-                .entry(name.into_owned())
-                .or_default()
-                .push(value.into_owned());
-        }
-    }
-    let mut headers = BTreeMap::<String, Vec<String>>::new();
-    for name in request.headers().keys() {
-        let values = request
-            .headers()
-            .get_all(name)
-            .iter()
-            .filter_map(|value| value.to_str().ok())
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        if !values.is_empty() {
-            headers.insert(name.as_str().to_ascii_lowercase(), values);
-        }
-    }
-    let mut cookies = BTreeMap::<String, Vec<String>>::new();
-    for value in request.headers().get_all(COOKIE).iter() {
-        let Ok(value) = value.to_str() else {
-            continue;
-        };
-        for pair in value.split(';') {
-            let Some((name, value)) = pair.trim().split_once('=') else {
-                continue;
-            };
-            cookies
-                .entry(name.trim().to_owned())
-                .or_default()
-                .push(value.trim().to_owned());
-        }
-    }
-    IncomingParameters {
-        path,
-        query,
-        headers,
-        cookies,
-    }
-}
-
-async fn operation_execution_response(execution: OperationExecution, head: bool) -> Response {
-    if let Some(fault) = execution.fault() {
-        tracing::info!(
-            target: "simile::fault",
-            operation = execution.operation(),
-            fault = fault.name(),
-            source = ?fault.source(),
-            phase = ?fault.phase(),
-            "activated environmental fault"
-        );
-    }
-    match execution.transport() {
-        TransportPlan::Respond => operation_response(execution.response(), head),
+async fn send_exchange(exchange: simile_http::HttpExchange) -> Response {
+    let (parts, bytes) = exchange.response.into_parts();
+    let body = match exchange.transport {
+        TransportPlan::Respond => Body::from(bytes),
         TransportPlan::RespondAfter { milliseconds } => {
-            tokio::time::sleep(Duration::from_millis(*milliseconds)).await;
-            operation_response(execution.response(), head)
+            tokio::time::sleep(Duration::from_millis(milliseconds)).await;
+            Body::from(bytes)
         }
-        TransportPlan::DisconnectAfterCommit => disconnect_after_commit(execution.response()),
-    }
-}
-
-fn disconnect_after_commit(response: &simile_runtime::SynthesizedResponse) -> Response {
-    let status =
-        StatusCode::from_u16(response.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    let error = std::io::Error::new(
-        std::io::ErrorKind::ConnectionReset,
-        "simile injected a disconnect after commit",
-    );
-    let body = Body::from_stream(stream::once(
-        async move { Err::<Bytes, std::io::Error>(error) },
-    ));
-    let mut outgoing = (status, body).into_response();
-    if let Some(content_type) = response
-        .media_type()
-        .and_then(|value| HeaderValue::from_str(value).ok())
-    {
-        outgoing.headers_mut().insert(CONTENT_TYPE, content_type);
-    }
-    if let Err(error) = apply_response_headers(&mut outgoing, response) {
-        return error;
-    }
-    outgoing
-}
-
-fn header(headers: &HeaderMap, name: &str) -> std::result::Result<Option<String>, Response> {
-    headers
-        .get(name)
-        .map(|value| {
-            value.to_str().map(str::to_owned).map_err(|_| {
-                error_response(
-                    StatusCode::BAD_REQUEST,
-                    "invalid_header",
-                    "request contains a non-text header value",
-                )
-            })
-        })
-        .transpose()
-}
-
-fn operation_response(response: &simile_runtime::SynthesizedResponse, head: bool) -> Response {
-    let status =
-        StatusCode::from_u16(response.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-    let body = if head {
-        Body::empty()
-    } else {
-        Body::from(response.bytes().to_vec())
-    };
-    let mut outgoing = (status, body).into_response();
-    if let Some(content_type) = response.media_type() {
-        let Ok(value) = HeaderValue::from_str(content_type) else {
-            return error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "invalid_response_header",
-                "compiled response contains an invalid content type",
+        TransportPlan::DisconnectAfterCommit => {
+            let error = std::io::Error::new(
+                std::io::ErrorKind::ConnectionReset,
+                "simile injected a disconnect after commit",
             );
-        };
-        outgoing.headers_mut().insert(CONTENT_TYPE, value);
-    }
-    if let Err(error) = apply_response_headers(&mut outgoing, response) {
-        return error;
-    }
-    outgoing
-}
-
-fn apply_response_headers(
-    outgoing: &mut Response,
-    response: &simile_runtime::SynthesizedResponse,
-) -> std::result::Result<(), Response> {
-    for (name, value) in response.headers() {
-        let name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| {
-            error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "invalid_response_header",
-                "compiled response contains an invalid header name",
-            )
-        })?;
-        let value = HeaderValue::from_str(value).map_err(|_| {
-            error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "invalid_response_header",
-                "compiled response contains an invalid header value",
-            )
-        })?;
-        outgoing.headers_mut().append(name, value);
-    }
-    Ok(())
-}
-
-fn operation_error(
-    runtime: &Runtime,
-    operation: &str,
-    error: simile_runtime::Error,
-    head: bool,
-) -> Response {
-    let Some(cause) = service_error_cause(&error) else {
-        return runtime_error(error);
+            Body::from_stream(stream::once(
+                async move { Err::<Bytes, std::io::Error>(error) },
+            ))
+        }
     };
-    match runtime.synthesize_protocol_error(operation, cause) {
-        Ok(Some(response)) => {
-            tracing::debug!(
-                target: "simile::http",
-                operation,
-                status = response.status(),
-                error = %error,
-                issues = ?error.issues(),
-                "request rejected using the emulated service contract"
-            );
-            operation_response(&response, head)
-        }
-        Ok(None) => runtime_error(error),
-        Err(synthesis_error) => {
-            tracing::warn!(
-                target: "simile::http",
-                operation,
-                error = %synthesis_error,
-                "could not synthesize the emulated service's declared error response"
-            );
-            runtime_error(error)
-        }
-    }
-}
-
-fn service_error_cause(error: &simile_runtime::Error) -> Option<&'static str> {
-    use simile_runtime::Error as RuntimeError;
-
-    match error {
-        RuntimeError::InvalidBody { .. } => Some("invalid_body"),
-        RuntimeError::MalformedJson { .. }
-        | RuntimeError::MalformedBody { .. }
-        | RuntimeError::InvalidParameters { .. }
-        | RuntimeError::BodyRequired { .. }
-        | RuntimeError::BodyNotDeclared { .. }
-        | RuntimeError::EmptyReplayIdentity => Some("malformed_request"),
-        RuntimeError::MissingContentType { .. }
-        | RuntimeError::UnsupportedMediaType { .. }
-        | RuntimeError::UnsupportedEncoding { .. } => Some("unsupported_media_type"),
-        RuntimeError::IdempotencyConflict { .. } => Some("idempotency_conflict"),
-        RuntimeError::AuthenticationRequired { .. } => Some("authentication_required"),
-        RuntimeError::PermissionDenied { .. } => Some("permission_denied"),
-        _ => None,
-    }
-}
-
-fn runtime_error(error: simile_runtime::Error) -> Response {
-    use simile_runtime::Error as RuntimeError;
-
-    if let RuntimeError::InvalidParameters { issues } = &error {
-        return json_response(
-            StatusCode::BAD_REQUEST,
-            json!({
-                "error": {
-                    "code": "invalid_parameters",
-                    "message": "request parameters do not satisfy the operation contract",
-                    "issues": issues,
-                }
-            }),
-        );
-    }
-
-    if let RuntimeError::InvalidBody { issues } = &error {
-        let message = validation_error_message(issues.len());
-        return json_response(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            json!({
-                "error": {
-                    "code": "invalid_body",
-                    "message": message,
-                    "issues": issues,
-                }
-            }),
-        );
-    }
-
-    let (status, code) = match &error {
-        RuntimeError::MalformedJson { .. } => (StatusCode::BAD_REQUEST, "malformed_json"),
-        RuntimeError::MalformedBody { .. } => (StatusCode::BAD_REQUEST, "malformed_body"),
-        RuntimeError::InvalidParameters { .. } => (StatusCode::BAD_REQUEST, "invalid_parameters"),
-        RuntimeError::MissingContentType { .. }
-        | RuntimeError::UnsupportedMediaType { .. }
-        | RuntimeError::UnsupportedEncoding { .. } => {
-            (StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
-        }
-        RuntimeError::BodyRequired { .. } | RuntimeError::BodyNotDeclared { .. } => {
-            (StatusCode::BAD_REQUEST, "invalid_body")
-        }
-        RuntimeError::IdempotencyConflict { .. } => (StatusCode::CONFLICT, "idempotency_conflict"),
-        RuntimeError::AuthenticationRequired { .. } => {
-            (StatusCode::UNAUTHORIZED, "authentication_required")
-        }
-        RuntimeError::PermissionDenied { .. } => (StatusCode::FORBIDDEN, "permission_denied"),
-        _ => (StatusCode::INTERNAL_SERVER_ERROR, "emulation_failed"),
-    };
-    error_response(status, code, &error.to_string())
-}
-
-fn validation_error_message(issue_count: usize) -> String {
-    if issue_count == 1 {
-        "request body is invalid; fix the issue listed in `issues` and retry".to_owned()
-    } else {
-        format!(
-            "request body is invalid; fix the {issue_count} issues listed in `issues` and retry"
-        )
-    }
-}
-
-fn method_not_allowed(methods: BTreeSet<&str>) -> Response {
-    let mut response = error_response(
-        StatusCode::METHOD_NOT_ALLOWED,
-        "method_not_allowed",
-        "method is not declared for this route",
-    );
-    let allow = methods.into_iter().collect::<Vec<_>>().join(", ");
-    if let Ok(value) = HeaderValue::from_str(&allow) {
-        response.headers_mut().insert(ALLOW, value);
-    }
-    response
-}
-
-fn error_response(status: StatusCode, code: &str, message: &str) -> Response {
-    json_response(
-        status,
-        json!({
-            "error": {
-                "code": code,
-                "message": message,
-            }
-        }),
-    )
-}
-
-fn json_response(status: StatusCode, payload: serde_json::Value) -> Response {
-    (status, axum::Json(payload)).into_response()
+    Response::from_parts(parts, body)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use simile_compiler::{CompileRequest, Compiler, Source};
     use simile_heuristics::Policy;
+    use simile_http::{Match, validation_error_message};
+    use std::collections::BTreeSet;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::sync::oneshot;
 
@@ -1402,41 +791,33 @@ profile "merchant" {
 
     #[tokio::test]
     async fn enacts_delay_and_disconnect_transport_plans() {
-        let artifact = artifact_with_faults();
-        let runtime = Runtime::new(&artifact);
-        let call = OperationCall {
-            operation: "POST /orders",
-            content_type: None,
-            body: b"",
-        };
-        let delayed = runtime
-            .execute_with_options(
-                call,
-                ExecutionOptions {
-                    scenario: Some("slow"),
-                    ..ExecutionOptions::default()
+        let service =
+            Service::memory(artifact_with_faults()).unwrap_or_else(|error| panic!("{error}"));
+        let routes = RouteTable::new(service.artifact());
+        for scenario in ["slow", "lost"] {
+            let request = Request::builder()
+                .method("POST")
+                .uri("/orders")
+                .body(simile_http::RequestBody::Bytes(Vec::new()))
+                .unwrap_or_else(|error| panic!("{error}"));
+            let exchange = simile_http::handle_request(
+                &service,
+                &routes,
+                request,
+                &simile_http::HttpOptions {
+                    scenario: Some(scenario.to_owned()),
+                    ..Default::default()
                 },
-            )
-            .unwrap_or_else(|error| panic!("{error}"));
-        let started = Instant::now();
-        let response = operation_execution_response(delayed, false).await;
-
-        assert_eq!(response.status(), StatusCode::CREATED);
-        assert!(started.elapsed() >= Duration::from_millis(10));
-
-        let disconnected = runtime
-            .execute_with_options(
-                call,
-                ExecutionOptions {
-                    scenario: Some("lost"),
-                    ..ExecutionOptions::default()
-                },
-            )
-            .unwrap_or_else(|error| panic!("{error}"));
-        let response = operation_execution_response(disconnected, false).await;
-
-        assert_eq!(response.status(), StatusCode::CREATED);
-        assert!(to_bytes(response.into_body(), 1_024).await.is_err());
+            );
+            let started = Instant::now();
+            let response = send_exchange(exchange).await;
+            assert_eq!(response.status(), StatusCode::CREATED);
+            if scenario == "slow" {
+                assert!(started.elapsed() >= Duration::from_millis(10));
+            } else {
+                assert!(to_bytes(response.into_body(), 1_024).await.is_err());
+            }
+        }
     }
 
     async fn serve_raw_with_artifact(artifact: Artifact, request: &[u8]) -> String {
@@ -1514,6 +895,66 @@ profile "merchant" {
     }
 
     #[tokio::test]
+    async fn rejects_invalid_heads_without_waiting_for_the_declared_body() {
+        let cases = [
+            (artifact(), "GET /absent", "", 404, "not_found"),
+            (artifact(), "HEAD /absent", "", 404, ""),
+            (artifact(), "PUT /orders", "", 405, "method_not_allowed"),
+            (
+                artifact_with_authentication(),
+                "GET /private",
+                "",
+                401,
+                "authentication_required",
+            ),
+            (
+                artifact(),
+                "GET /orders/not-an-order",
+                "",
+                400,
+                "invalid_parameters",
+            ),
+            (
+                artifact(),
+                "GET /orders/ord_123?limit=0",
+                "",
+                400,
+                "invalid_parameters",
+            ),
+            (
+                artifact(),
+                "GET /orders/ord_123",
+                "X-Trace: x\r\n",
+                400,
+                "invalid_parameters",
+            ),
+        ];
+        for (artifact, target, headers, expected, code) in cases {
+            for framing in ["Content-Length: 16", "Transfer-Encoding: chunked"] {
+                // Leave the write half open and send no body bytes or terminating chunk.
+                let request = format!(
+                    "{target} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n{framing}\r\n{headers}\r\n"
+                );
+                let response = tokio::time::timeout(
+                    Duration::from_secs(2),
+                    serve_raw_with_artifact(artifact.clone(), request.as_bytes()),
+                )
+                .await
+                .unwrap_or_else(|_| panic!("{target} waited for its {framing} body"));
+                assert!(response.starts_with(&format!("HTTP/1.1 {expected} ")));
+                if target.starts_with("HEAD ") {
+                    assert!(response.ends_with("\r\n\r\n"));
+                } else {
+                    assert!(response.contains(code), "{target}: {response}");
+                }
+                if expected == 405 {
+                    assert!(response.contains("allow: POST\r\n"));
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn validates_path_query_and_header_parameters_before_execution() {
         let invalid = serve_raw(
             b"GET /orders/not-an-order?limit=0 HTTP/1.1\r\nHost: localhost\r\nX-Trace: ok\r\nConnection: close\r\n\r\n",
@@ -1587,43 +1028,5 @@ profile "merchant" {
                 "message": "required property `customer` is missing"
             }])
         );
-    }
-
-    #[test]
-    fn sanitizes_sensitive_incident_evidence_without_flattening_the_request() {
-        let body = br#"{
-          "customer": {"name": "Ada", "api_key": "sk_live_secret"},
-          "password_reset_token": "reset-secret",
-          "items": [{"reference": "sku_123"}]
-        }"#;
-        let sanitized = sanitize_body(Some("application/problem+json; charset=utf-8"), body)
-            .unwrap_or_else(|| panic!("JSON incident body must be sanitizable"));
-        let value: serde_json::Value = serde_json::from_slice(&sanitized)
-            .unwrap_or_else(|error| panic!("sanitized body must remain JSON: {error}"));
-
-        assert_eq!(value["customer"]["name"], "Ada");
-        assert_eq!(value["customer"]["api_key"], "<redacted>");
-        assert_eq!(value["password_reset_token"], "<redacted>");
-        assert_eq!(value["items"][0]["reference"], "sku_123");
-
-        let parameters = sanitize_parameters(IncomingParameters {
-            path: BTreeMap::from([("access_token".to_owned(), vec!["path-secret".to_owned()])]),
-            query: BTreeMap::from([("page".to_owned(), vec!["2".to_owned()])]),
-            headers: BTreeMap::from([(
-                "authorization".to_owned(),
-                vec!["Bearer secret".to_owned()],
-            )]),
-            cookies: BTreeMap::from([("session_token".to_owned(), vec!["cookie".to_owned()])]),
-        });
-        assert_eq!(parameters.path["access_token"], ["<redacted>"]);
-        assert_eq!(parameters.query["page"], ["2"]);
-        assert_eq!(parameters.headers["authorization"], ["<redacted>"]);
-        assert_eq!(parameters.cookies["session_token"], ["<redacted>"]);
-    }
-
-    #[test]
-    fn declines_opaque_request_bodies_for_automatic_reports() {
-        assert!(sanitize_body(Some("application/octet-stream"), b"secret bytes").is_none());
-        assert!(sanitize_body(None, b"secret bytes").is_none());
     }
 }

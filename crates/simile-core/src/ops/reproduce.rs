@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+#[cfg(feature = "native")]
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -64,6 +66,7 @@ pub struct ReproductionDiagnostic {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(feature = "native")]
 pub struct IncidentBundleRequest<'a> {
     pub path: &'a Path,
     pub artifact_bytes: &'a [u8],
@@ -115,6 +118,7 @@ pub struct CaseVerification {
     pub diagnostic: ReproductionDiagnostic,
 }
 
+#[cfg(feature = "native")]
 pub(crate) fn write(
     path: &Path,
     artifact_bytes: &[u8],
@@ -127,20 +131,13 @@ pub(crate) fn write(
             path: path.to_path_buf(),
         });
     }
-    let artifact = simile_artifact::decode(artifact_bytes)?;
-    let manifest = Manifest {
-        format_version: RESPONSE_FORMAT_VERSION,
-        simile_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
-        artifact_format: Some(simile_artifact::FORMAT_VERSION),
-        artifact_sha256: artifact.summary().payload_sha256,
-        service: report.service.clone(),
-        service_version: report.service_version.clone(),
-        operation: report.operation.clone(),
-        seed: report.seed,
-        outcome: outcome.map(str::to_owned),
-        scenario: scenario.map(str::to_owned),
-        expected: report.response.clone(),
-    };
+    let bundle = response_bundle(
+        path.to_path_buf(),
+        artifact_bytes,
+        report,
+        outcome,
+        scenario,
+    )?;
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty());
@@ -150,10 +147,10 @@ pub(crate) fn write(
     let staging = staging_path(path);
     fs::create_dir(&staging).map_err(|source| io("create", &staging, source))?;
     let result = (|| {
-        write_json(&staging.join(MANIFEST), &manifest)?;
-        write_json(&staging.join(REQUEST), &report.request)?;
-        fs::write(staging.join(ARTIFACT), artifact_bytes)
-            .map_err(|source| io("write", &staging.join(ARTIFACT), source))?;
+        for (name, bytes) in &bundle.files {
+            fs::write(staging.join(name), bytes)
+                .map_err(|source| io("write", &staging.join(name), source))?;
+        }
         fs::rename(&staging, path).map_err(|source| io("install", path, source))?;
         Ok(())
     })();
@@ -163,9 +160,14 @@ pub(crate) fn write(
     result
 }
 
+#[cfg(feature = "native")]
 pub fn replay(request: &ReplayRequest) -> Result<ReplayReport> {
-    let manifest_path = request.bundle.join(MANIFEST);
-    let manifest: Manifest = serde_json::from_slice(&read(&manifest_path)?).map_err(|source| {
+    replay_bundle(&MemoryBundle::load(&request.bundle)?)
+}
+
+pub fn replay_bundle(bundle: &MemoryBundle) -> Result<ReplayReport> {
+    let manifest_path = bundle.name.join(MANIFEST);
+    let manifest: Manifest = serde_json::from_slice(bundle.file(MANIFEST)?).map_err(|source| {
         Error::ReproductionManifest {
             path: manifest_path,
             source,
@@ -186,13 +188,13 @@ pub fn replay(request: &ReplayRequest) -> Result<ReplayReport> {
             supported: simile_artifact::FORMAT_VERSION,
         });
     }
-    let artifact = simile_artifact::decode(&read(&request.bundle.join(ARTIFACT))?)?;
+    let artifact = simile_artifact::decode(bundle.file(ARTIFACT)?)?;
     if artifact.summary().payload_sha256 != manifest.artifact_sha256 {
         return Err(Error::ReproductionDigest);
     }
-    let request_path = request.bundle.join(REQUEST);
+    let request_path = bundle.name.join(REQUEST);
     let executed_request: ExecutedRequest =
-        serde_json::from_slice(&read(&request_path)?).map_err(|source| {
+        serde_json::from_slice(bundle.file(REQUEST)?).map_err(|source| {
             Error::ReproductionManifest {
                 path: request_path,
                 source,
@@ -230,6 +232,7 @@ pub fn replay(request: &ReplayRequest) -> Result<ReplayReport> {
 }
 
 /// Capture one sanitized runtime failure as a replayable case.
+#[cfg(feature = "native")]
 pub fn write_incident(request: &IncidentBundleRequest<'_>) -> Result<()> {
     if request.path.exists() {
         return Err(Error::ReproductionExists {
@@ -280,9 +283,15 @@ pub fn write_incident(request: &IncidentBundleRequest<'_>) -> Result<()> {
 }
 
 /// Verify either a response reproduction or an incident reproduction without trusting its claim.
+#[cfg(feature = "native")]
 pub fn verify_case(path: &Path) -> Result<CaseVerification> {
+    verify_bundle(&MemoryBundle::load(path)?)
+}
+
+pub fn verify_bundle(bundle: &MemoryBundle) -> Result<CaseVerification> {
+    let path = &bundle.name;
     let manifest_path = path.join(MANIFEST);
-    let manifest_value: serde_json::Value = serde_json::from_slice(&read(&manifest_path)?)
+    let manifest_value: serde_json::Value = serde_json::from_slice(bundle.file(MANIFEST)?)
         .map_err(|source| Error::ReproductionManifest {
             path: manifest_path.clone(),
             source,
@@ -296,9 +305,7 @@ pub fn verify_case(path: &Path) -> Result<CaseVerification> {
             reason: "bundle manifest has no valid formatVersion".to_owned(),
         })?;
     if format == RESPONSE_FORMAT_VERSION {
-        let replayed = replay(&ReplayRequest {
-            bundle: path.to_owned(),
-        })?;
+        let replayed = replay_bundle(bundle)?;
         let diagnostic = ReproductionDiagnostic {
             code: "emulation_inconsistency".to_owned(),
             message: "the recorded response is reproduced".to_owned(),
@@ -335,25 +342,25 @@ pub fn verify_case(path: &Path) -> Result<CaseVerification> {
             supported: simile_artifact::FORMAT_VERSION,
         });
     }
-    let artifact = simile_artifact::decode(&read(&path.join(ARTIFACT))?)?;
+    let artifact = simile_artifact::decode(bundle.file(ARTIFACT)?)?;
     if artifact.summary().payload_sha256 != manifest.artifact_sha256 {
         return Err(Error::ReproductionDigest);
     }
     let request_path = path.join(REQUEST);
     let request: IncidentRequestDocument =
-        serde_json::from_slice(&read(&request_path)?).map_err(|source| {
+        serde_json::from_slice(bundle.file(REQUEST)?).map_err(|source| {
             Error::ReproductionManifest {
                 path: request_path,
                 source,
             }
         })?;
-    let body = read(&path.join("request.body"))?;
+    let body = bundle.file("request.body")?;
     let parameters = validate_parameters(&artifact, &manifest.operation, &request.parameters)?;
     let actual = Runtime::from_artifact(artifact).execute_with_options(
         OperationCall {
             operation: &manifest.operation,
             content_type: request.content_type.as_deref(),
-            body: &body,
+            body,
         },
         ExecutionOptions {
             parameters: Some(&parameters),
@@ -401,6 +408,7 @@ fn diagnostic_fingerprint(
     )
 }
 
+#[cfg(feature = "native")]
 fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|source| Error::ReproductionManifest {
         path: path.to_path_buf(),
@@ -409,6 +417,7 @@ fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
     fs::write(path, bytes).map_err(|source| io("write", path, source))
 }
 
+#[cfg(feature = "native")]
 fn read(path: &Path) -> Result<Vec<u8>> {
     fs::read(path).map_err(|source| io("read", path, source))
 }
@@ -421,6 +430,7 @@ fn io(action: &'static str, path: &Path, source: std::io::Error) -> Error {
     }
 }
 
+#[cfg(feature = "native")]
 fn staging_path(path: &Path) -> PathBuf {
     let name = path
         .file_name()
@@ -524,4 +534,81 @@ paths:
         assert!(verified.fingerprint.contains(&verified.diagnostic.code));
         drop(fs::remove_dir_all(path));
     }
+}
+
+/// Named bundle files. Payloads are canonical Rust JSON or raw artifact/body bytes.
+#[derive(Clone, Debug)]
+pub struct MemoryBundle {
+    pub name: PathBuf,
+    pub files: BTreeMap<String, Vec<u8>>,
+}
+
+impl MemoryBundle {
+    fn file(&self, name: &str) -> Result<&[u8]> {
+        self.files.get(name).map(Vec::as_slice).ok_or_else(|| {
+            io(
+                "read",
+                &self.name.join(name),
+                std::io::Error::from(std::io::ErrorKind::NotFound),
+            )
+        })
+    }
+
+    #[cfg(feature = "native")]
+    pub fn load(path: &Path) -> Result<Self> {
+        let mut files = BTreeMap::new();
+        for name in [MANIFEST, ARTIFACT, REQUEST] {
+            files.insert(name.to_owned(), read(&path.join(name))?);
+        }
+        if path.join("request.body").is_file() {
+            files.insert("request.body".to_owned(), read(&path.join("request.body"))?);
+        }
+        Ok(Self {
+            name: path.to_owned(),
+            files,
+        })
+    }
+}
+
+pub fn response_bundle(
+    name: PathBuf,
+    artifact_bytes: &[u8],
+    report: &RunReport,
+    outcome: Option<&str>,
+    scenario: Option<&str>,
+) -> Result<MemoryBundle> {
+    let artifact = simile_artifact::decode(artifact_bytes)?;
+    let manifest = Manifest {
+        format_version: RESPONSE_FORMAT_VERSION,
+        simile_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
+        artifact_format: Some(simile_artifact::FORMAT_VERSION),
+        artifact_sha256: artifact.summary().payload_sha256,
+        service: report.service.clone(),
+        service_version: report.service_version.clone(),
+        operation: report.operation.clone(),
+        seed: report.seed,
+        outcome: outcome.map(str::to_owned),
+        scenario: scenario.map(str::to_owned),
+        expected: report.response.clone(),
+    };
+
+    let manifest_bytes =
+        serde_json::to_vec_pretty(&manifest).map_err(|source| Error::ReproductionManifest {
+            path: name.join(MANIFEST),
+            source,
+        })?;
+    let request_bytes = serde_json::to_vec_pretty(&report.request).map_err(|source| {
+        Error::ReproductionManifest {
+            path: name.join(REQUEST),
+            source,
+        }
+    })?;
+    Ok(MemoryBundle {
+        name,
+        files: BTreeMap::from([
+            (MANIFEST.to_owned(), manifest_bytes),
+            (REQUEST.to_owned(), request_bytes),
+            (ARTIFACT.to_owned(), artifact_bytes.to_vec()),
+        ]),
+    })
 }

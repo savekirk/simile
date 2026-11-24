@@ -1,13 +1,17 @@
 use std::collections::BTreeMap;
+#[cfg(feature = "native")]
 use std::path::PathBuf;
 
 use serde::Serialize;
-use simile_stack::{
-    EventQuery, JournalEntry, RedbStateStore, ResourceAddress, Stack, StateIdentity, StateStore,
-};
+use simile_stack::{EventQuery, JournalEntry, ResourceAddress, Stack};
 
+use crate::Result;
+#[cfg(feature = "native")]
 use crate::registry::{Registry, validate_service_name};
-use crate::{Context, Error, Result};
+#[cfg(feature = "native")]
+use crate::{Context, Error};
+#[cfg(feature = "native")]
+use simile_stack::{RedbStateStore, StateIdentity, StateStore};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StateRequest {
@@ -31,6 +35,7 @@ pub struct StateReport {
     pub values: BTreeMap<String, serde_json::Value>,
 }
 
+#[cfg(feature = "native")]
 pub fn inspect_state(ctx: &Context, request: &StateRequest) -> Result<StateReport> {
     validate_service_name(&request.service)?;
     let registered = Registry::new(ctx.simile_home()?).load(&request.service)?;
@@ -48,6 +53,14 @@ pub fn inspect_state(ctx: &Context, request: &StateRequest) -> Result<StateRepor
     let snapshot = store.load()?.ok_or_else(|| Error::StateNotFound {
         service: request.service.clone(),
     })?;
+    inspect_snapshot(snapshot, request)
+}
+
+/// Inspect the same complete snapshot used by durable and in-memory sessions.
+pub fn inspect_snapshot(
+    snapshot: simile_stack::StackSnapshot,
+    request: &StateRequest,
+) -> Result<StateReport> {
     let stack = Stack::from_snapshot(snapshot);
     let resource = request
         .resource
@@ -91,6 +104,7 @@ pub fn inspect_state(ctx: &Context, request: &StateRequest) -> Result<StateRepor
     })
 }
 
+#[cfg(feature = "native")]
 pub fn service_state_path(ctx: &Context, service: &str) -> Result<PathBuf> {
     validate_service_name(service)?;
     Ok(ctx

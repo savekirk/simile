@@ -1,11 +1,16 @@
 use std::collections::BTreeMap;
+#[cfg(feature = "native")]
 use std::fs;
+#[cfg(feature = "native")]
 use std::io::Read;
+#[cfg(feature = "native")]
 use std::path::PathBuf;
+#[cfg(feature = "native")]
 use std::time::Duration;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+#[cfg(feature = "native")]
 use simile_heuristics::Policy;
 use simile_runtime::{
     ExecutionOptions, OperationValueCall, Runtime, SynthesisRequest,
@@ -13,12 +18,15 @@ use simile_runtime::{
 };
 use simile_spec::OutcomeProvenance;
 
+#[cfg(feature = "native")]
 use super::compile::{ContractFormat, compile_contract_path, compile_contract_source};
 use crate::{Error, Result};
 
+#[cfg(feature = "native")]
 const MAX_REMOTE_SPEC_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg(feature = "native")]
 pub enum SpecSource {
     Path(PathBuf),
     Url(String),
@@ -31,12 +39,14 @@ pub enum OperationSelector {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg(feature = "native")]
 pub enum RequestInput {
     Inline(String),
     Path(PathBuf),
     Stdin,
 }
 
+#[cfg(feature = "native")]
 impl RequestInput {
     #[must_use]
     pub fn from_argument(value: String) -> Self {
@@ -54,6 +64,7 @@ impl RequestInput {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg(feature = "native")]
 pub struct RunRequest {
     pub spec: SpecSource,
     pub contract_format: ContractFormat,
@@ -111,6 +122,7 @@ pub struct ExecutedRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, deserialize_with = "deserialize_optional_body")]
     pub body: Option<Value>,
 }
 
@@ -121,6 +133,7 @@ pub struct ExecutedResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, deserialize_with = "deserialize_optional_body")]
     pub body: Option<Value>,
 }
 
@@ -160,6 +173,7 @@ pub struct RunReport {
 }
 
 /// Compile a service source in memory and execute one selected operation.
+#[cfg(feature = "native")]
 pub fn run(request: &RunRequest) -> Result<RunReport> {
     let seed = request.seed.unwrap_or_else(rand::random);
     let compiled = match &request.spec {
@@ -185,10 +199,53 @@ pub fn run(request: &RunRequest) -> Result<RunReport> {
             )?
         }
     };
-    let service = compiled.contract.info.title.clone();
-    let service_version = compiled.contract.info.version.clone();
     let encoded = simile_artifact::encode(&compiled)?;
     let artifact = simile_artifact::decode(&encoded)?;
+    let input = request.request.as_ref().map(read_request).transpose()?;
+    let report = run_artifact(
+        artifact,
+        &BaselineRequest {
+            operation: &request.operation,
+            outcome: request.outcome.as_deref(),
+            scenario: request.scenario.as_deref(),
+            request: input
+                .as_ref()
+                .map(|(name, bytes)| (name.as_str(), bytes.as_slice())),
+            content_type: request.content_type.as_deref(),
+            seed,
+        },
+    )?;
+    if let Some(path) = &request.bundle {
+        super::reproduce::write(
+            path,
+            &encoded,
+            &report,
+            request.outcome.as_deref(),
+            request.scenario.as_deref(),
+        )?;
+    }
+    Ok(report)
+}
+
+/// One isolated baseline run. Request JSON stays in Rust, including 64-bit values
+/// and the distinction between a missing body and JSON null.
+pub struct BaselineRequest<'a> {
+    pub operation: &'a OperationSelector,
+    pub outcome: Option<&'a str>,
+    pub scenario: Option<&'a str>,
+    pub request: Option<(&'a str, &'a [u8])>,
+    pub content_type: Option<&'a str>,
+    pub seed: u64,
+}
+
+pub fn run_artifact(
+    artifact: simile_artifact::Artifact,
+    request: &BaselineRequest<'_>,
+) -> Result<RunReport> {
+    let summary = artifact.summary();
+    let service = summary.service;
+    let service_version = summary.service_version;
+    let seed = request.seed;
     let selected =
         match &request.operation {
             OperationSelector::Key(key) => {
@@ -214,8 +271,8 @@ pub fn run(request: &RunRequest) -> Result<RunReport> {
             body: prepared.body.as_ref(),
         },
         ExecutionOptions {
-            outcome: request.outcome.as_deref(),
-            scenario: request.scenario.as_deref(),
+            outcome: request.outcome,
+            scenario: request.scenario,
             response_seed: Some(response_seed(seed)),
             ..ExecutionOptions::default()
         },
@@ -262,15 +319,6 @@ pub fn run(request: &RunRequest) -> Result<RunReport> {
         response: executed_response,
         webhooks,
     };
-    if let Some(path) = &request.bundle {
-        super::reproduce::write(
-            path,
-            &encoded,
-            &report,
-            request.outcome.as_deref(),
-            request.scenario.as_deref(),
-        )?;
-    }
     Ok(report)
 }
 
@@ -281,14 +329,13 @@ const fn is_zero(value: &u64) -> bool {
 fn prepare_request(
     artifact: &simile_artifact::Artifact,
     operation: &str,
-    request: &RunRequest,
+    request: &BaselineRequest<'_>,
     seed: u64,
 ) -> Result<PreparedRequest> {
-    if let Some(input) = &request.request {
-        let (source_name, bytes) = read_request(input)?;
+    if let Some((source_name, bytes)) = request.request {
         let document: RequestDocument =
-            serde_json::from_slice(&bytes).map_err(|source| Error::InvalidRequest {
-                source_name,
+            serde_json::from_slice(bytes).map_err(|source| Error::InvalidRequest {
+                source_name: source_name.to_owned(),
                 source,
             })?;
         let content_type = header(&document.headers, "content-type")?.map(str::to_owned);
@@ -321,7 +368,7 @@ fn prepare_request(
         artifact,
         SynthesisRequest {
             operation,
-            content_type: request.content_type.as_deref(),
+            content_type: request.content_type,
         },
         request_seed(seed),
     )?;
@@ -341,6 +388,7 @@ pub(crate) const fn response_seed(seed: u64) -> u64 {
     seed ^ 0x1319_8a2e_0370_7344
 }
 
+#[cfg(feature = "native")]
 fn read_request(input: &RequestInput) -> Result<(String, Vec<u8>)> {
     match input {
         RequestInput::Inline(value) => Ok(("inline JSON".to_owned(), value.as_bytes().to_vec())),
@@ -381,6 +429,7 @@ fn header<'a>(headers: &'a BTreeMap<String, String>, name: &str) -> Result<Optio
     Ok(value)
 }
 
+#[cfg(feature = "native")]
 pub(crate) fn read_spec(source: &SpecSource) -> Result<(String, String)> {
     match source {
         SpecSource::Path(path) => {
@@ -411,7 +460,7 @@ pub(crate) fn read_spec(source: &SpecSource) -> Result<(String, String)> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "native"))]
 mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -746,4 +795,13 @@ mod tests {
         assert_eq!(report.operation, "POST /orders");
         assert_eq!(report.request.source, RequestSource::Synthesized);
     }
+}
+
+fn deserialize_optional_body<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<Value>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Value::deserialize(deserializer).map(Some)
 }

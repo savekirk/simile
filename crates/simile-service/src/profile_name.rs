@@ -13,11 +13,7 @@ const RANDOM_ATTEMPTS: usize = 64;
 /// Random selection keeps independently created profiles visually distinct. An
 /// exhaustive pass guarantees that random collisions cannot report exhaustion
 /// while any catalog combination remains available.
-pub(crate) fn generate(existing: &BTreeSet<String>) -> Option<String> {
-    generate_with_rng(&mut rand::rng(), existing)
-}
-
-fn generate_with_rng<R>(rng: &mut R, existing: &BTreeSet<String>) -> Option<String>
+pub(crate) fn generate_with_rng<R>(rng: &mut R, existing: &BTreeSet<String>) -> Option<String>
 where
     R: rand::Rng + ?Sized,
 {

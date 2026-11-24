@@ -3,10 +3,9 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use simile_artifact::Artifact;
-use simile_compiler::{Compiler, ParsedSourceCompileRequest};
+use simile_compiler::Compiler;
 use simile_hcl::{ContractDeclaration, ServiceDocument, SourceDeclaration};
 use simile_heuristics::Policy;
-use simile_spec::{DescriptionEntry, DescriptionKind};
 
 use super::compile::{ContractFormat, LoadedContract, compiler_source, load_contract};
 use super::run::{SpecSource, read_spec};
@@ -136,9 +135,6 @@ pub(crate) fn prepare_loaded_service(
         }
     };
     let mut modules = Vec::with_capacity(document.service.modules.len() + 1);
-    if !module_is_empty(&document.inline_module) {
-        modules.push(document.inline_module);
-    }
     for module in &document.service.modules {
         let path = config.resolve(module, "module")?;
         let contents = std::fs::read_to_string(&path).map_err(|source| Error::ReadSource {
@@ -151,24 +147,12 @@ pub(crate) fn prepare_loaded_service(
         ))?);
     }
 
-    let mut compiled = Compiler::new().compile_source_parsed(ParsedSourceCompileRequest {
-        contract: compiler_source(&contract),
+    let compiled = Compiler::new().compile_service(
+        &document,
+        compiler_source(&contract),
         modules,
-        heuristic_policy: Policy::Standard,
-    })?;
-    compiled.principal_setups = simile_hcl::compile_principal_setups(
-        document.principal_setups,
-        &compiled.contract,
-        &compiled.principals,
+        Policy::Standard,
     )?;
-    if let Some(description) = &document.service.description {
-        compiled.descriptions.insert(DescriptionEntry {
-            kind: DescriptionKind::Service,
-            parent: None,
-            name: document.service.name.clone(),
-            text: description.clone(),
-        });
-    }
     let encoded = simile_artifact::encode(&compiled)?;
     let artifact = simile_artifact::decode(&encoded)?;
     let host = document
@@ -262,24 +246,6 @@ fn verify_service_name(requested: &str, document: &ServiceDocument) -> Result<()
         requested: requested.to_owned(),
         configured: document.service.name.clone(),
     })
-}
-
-fn module_is_empty(module: &simile_hcl::Module) -> bool {
-    module.backends.is_empty()
-        && module.behaviors.is_empty()
-        && module.error_sets.is_empty()
-        && module.error_set_applications.is_empty()
-        && module.protocol_errors.is_empty()
-        && module.scenarios.is_empty()
-        && module.fault_uses.is_empty()
-        && module.faults.is_empty()
-        && module.fault_profiles.is_empty()
-        && module.async_operations.is_empty()
-        && module.effects.is_empty()
-        && module.webhooks.is_empty()
-        && module.webhook_policies.is_empty()
-        && module.principals.is_empty()
-        && module.profiles.is_empty()
 }
 
 #[cfg(test)]

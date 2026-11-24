@@ -108,6 +108,11 @@ pub(crate) struct StackClocks {
 }
 
 impl StackSnapshot {
+    #[must_use]
+    pub const fn clock(&self) -> ClockSnapshot {
+        self.clock
+    }
+
     /// Return a JSON view of one resource's engine state.
     ///
     /// State values are intentionally available only through this explicit
