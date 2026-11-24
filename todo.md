@@ -62,7 +62,8 @@ The first three implementation PRs are merged; the playground builds on `origin/
 ## Phase 4 — Browser playground
 
 - [x] Start from merged `origin/wasm` (`afe36cb`) and verify the fork destination.
-- [x] Rehearse an upstream update in an isolated checkout. The first portability
+- [x] Rehearse an upstream update in an isolated checkout, repeated against the
+  final fetched upstream `fa95fe0`. The first portability
   commit conflicts in `Cargo.toml`, `Cargo.lock`, and `simile-service/src/lib.rs`
   with upstream's newer console/persistence changes. Abort the rehearsal and
   preserve the requested fork base; no upstream changes are published.
@@ -81,7 +82,9 @@ The first three implementation PRs are merged; the playground builds on `origin/
   authenticated create/read over TCP, and reproduction replay all pass.
 - [x] Pass all five repository checks, portable dependency checks, five browser
   Rust tests, 146 Worker assertions, and frontend typecheck/lint/build/unit checks.
-- [ ] Publish the playground PR on origin and inspect its CI results.
+- [x] Publish [the playground PR](https://github.com/savekirk/simile/pull/5) on
+  origin with base `wasm`; leave the PR open and `origin/wasm` untouched.
+- [ ] Inspect the playground PR's final CI results.
 
 ## Decisions and tradeoffs
 
@@ -170,4 +173,4 @@ The first three implementation PRs are merged; the playground builds on `origin/
   Thirteen frontend unit tests cover persistence races, incompatible cached
   artifacts, paths, and lossless values. Native tests verify credential attachment
   and read-only inspection; exported workspaces and bundles run with the CLI.
-  Publication and CI verification are pending.
+  The PR is published against `wasm`; CI verification is pending.
