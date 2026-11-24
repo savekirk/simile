@@ -1,0 +1,32 @@
+[package]
+name = "simile-wasm"
+description = "Browser host for Simile application workflows"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+simile-core.workspace = true
+simile-compiler.workspace = true
+simile-artifact.workspace = true
+simile-heuristics.workspace = true
+simile-runtime.workspace = true
+simile-service.workspace = true
+simile-stack.workspace = true
+wasm-bindgen.workspace = true
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "=0.3.4", features = ["wasm_js"] }
+
+[dev-dependencies]
+wasm-bindgen-test.workspace = true
+
+[lints]
+workspace = true

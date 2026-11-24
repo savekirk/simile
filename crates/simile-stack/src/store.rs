@@ -1,16 +1,25 @@
+#[cfg(feature = "persistence")]
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+#[cfg(feature = "persistence")]
+use std::path::Path;
+use std::path::PathBuf;
 
+#[cfg(feature = "process")]
 use sha2::{Digest as _, Sha256};
+#[cfg(feature = "process")]
 use simile_spec::ResourceKind;
 use thiserror::Error;
 
-use crate::{ResourceAddress, StackSnapshot};
+#[cfg(feature = "process")]
+use crate::ResourceAddress;
+use crate::StackSnapshot;
 
 mod memory;
+#[cfg(feature = "persistence")]
 mod redb;
 
 pub use memory::MemoryStateStore;
+#[cfg(feature = "persistence")]
 pub use redb::RedbStateStore;
 
 pub type StateStoreResult<T> = std::result::Result<T, StateStoreError>;
@@ -32,6 +41,7 @@ impl StateIdentity {
     }
 }
 
+#[cfg(feature = "process")]
 pub(crate) fn default_component_state_path<'a>(
     kind: ResourceKind,
     resources: impl IntoIterator<Item = &'a ResourceAddress>,
@@ -39,6 +49,7 @@ pub(crate) fn default_component_state_path<'a>(
     Ok(component_state_path(&simile_home()?, kind, resources))
 }
 
+#[cfg(feature = "process")]
 fn component_state_path<'a>(
     simile_home: &Path,
     kind: ResourceKind,
@@ -64,6 +75,7 @@ fn component_state_path<'a>(
         .join(format!("{fingerprint}.redb"))
 }
 
+#[cfg(feature = "process")]
 fn simile_home() -> StateStoreResult<PathBuf> {
     if let Some(path) = std::env::var_os("SIMILE_HOME").filter(|path| !path.is_empty()) {
         let path = PathBuf::from(path);
@@ -126,13 +138,14 @@ pub enum StateStoreError {
     Protocol { found: u16, supported: u16 },
 }
 
+#[cfg(feature = "persistence")]
 fn lock_path(path: &Path) -> PathBuf {
     let mut value = OsString::from(path.as_os_str());
     value.push(".lock");
     PathBuf::from(value)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "process"))]
 mod tests {
     use std::path::Path;
 

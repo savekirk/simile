@@ -165,12 +165,18 @@ fn parse_contract(source: ContractSource<'_>) -> Result<simile_spec::ApiContract
                 source: error,
             })
         }
+        #[cfg(feature = "smithy")]
         ContractSource::Smithy(source) => {
             simile_smithy::parse(source.contents).map_err(|error| Error::Smithy {
                 name: source.name.to_owned(),
                 source: error,
             })
         }
+        #[cfg(not(feature = "smithy"))]
+        ContractSource::Smithy(source) => Err(Error::UnsupportedSource {
+            name: source.name.to_owned(),
+            format: "Smithy",
+        }),
         ContractSource::TypeScript(sources) => {
             let sources = sources
                 .iter()
@@ -374,6 +380,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error(
+        "{format} compilation is unavailable in this build for `{name}`; compile it with the native CLI and load the .similec artifact"
+    )]
+    UnsupportedSource { name: String, format: &'static str },
+
     #[error("could not compile OpenAPI source `{name}`: {source}")]
     OpenApi {
         name: String,
@@ -381,6 +392,7 @@ pub enum Error {
         source: simile_openapi::Error,
     },
 
+    #[cfg(feature = "smithy")]
     #[error("could not compile Smithy source `{name}`: {source}")]
     Smithy {
         name: String,

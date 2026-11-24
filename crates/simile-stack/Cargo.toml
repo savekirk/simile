@@ -9,52 +9,69 @@ authors.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+default = ["native"]
+native = ["persistence", "process"]
+persistence = ["dep:fs2", "dep:redb"]
+process = ["persistence", "dep:axum", "dep:clap", "dep:tokio", "dep:tracing", "dep:tracing-subscriber"]
+
 [dependencies]
-axum.workspace = true
+axum = { workspace = true, optional = true }
 ciborium.workspace = true
-clap.workspace = true
-fs2.workspace = true
-redb.workspace = true
+clap = { workspace = true, optional = true }
+fs2 = { workspace = true, optional = true }
+redb = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 simile-spec.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
+tokio = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+web-time.workspace = true
 
 [lints]
 workspace = true
 
 [[bin]]
 name = "simile-db"
+required-features = ["process"]
 path = "src/bin/simile-db.rs"
 
 [[bin]]
 name = "simile-cache"
+required-features = ["process"]
 path = "src/bin/simile-cache.rs"
 
 [[bin]]
 name = "simile-queue"
+required-features = ["process"]
 path = "src/bin/simile-queue.rs"
 
 [[bin]]
 name = "simile-mail"
+required-features = ["process"]
 path = "src/bin/simile-mail.rs"
 
 [[bin]]
 name = "simile-object-store"
+required-features = ["process"]
 path = "src/bin/simile-object-store.rs"
 
 [[bin]]
 name = "simile-event-bus"
+required-features = ["process"]
 path = "src/bin/simile-event-bus.rs"
 
 [[bin]]
 name = "simile-scheduler"
+required-features = ["process"]
 path = "src/bin/simile-scheduler.rs"
 
 [[bin]]
 name = "simile-http"
+required-features = ["process"]
 path = "src/bin/simile-http.rs"

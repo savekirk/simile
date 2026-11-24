@@ -9,12 +9,16 @@ authors.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+default = ["smithy"]
+smithy = ["dep:simile-smithy"]
+
 [dependencies]
 serde_json.workspace = true
 simile-hcl.workspace = true
 simile-heuristics.workspace = true
 simile-openapi.workspace = true
-simile-smithy.workspace = true
+simile-smithy = { workspace = true, optional = true }
 simile-spec.workspace = true
 simile-typescript.workspace = true
 thiserror.workspace = true

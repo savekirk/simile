@@ -16,6 +16,7 @@ members = [
     "crates/simile-spec",
     "crates/simile-stack",
     "crates/simile-typescript",
+    "crates/simile-wasm",
 ]
 resolver = "2"
 
@@ -52,8 +53,8 @@ serde_json = "1.0.145"
 serde_norway = "0.9.42"
 sha2 = "0.10.9"
 simile-artifact = { version = "=0.4.0", path = "crates/simile-artifact" }
-simile-compiler = { version = "=0.4.0", path = "crates/simile-compiler" }
-simile-core = { version = "=0.4.0", path = "crates/simile-core" }
+simile-compiler = { version = "=0.4.0", path = "crates/simile-compiler", default-features = false }
+simile-core = { version = "=0.4.0", path = "crates/simile-core", default-features = false }
 simile-hcl = { version = "=0.4.0", path = "crates/simile-hcl" }
 simile-heuristics = { version = "=0.4.0", path = "crates/simile-heuristics" }
 simile-learning = { version = "=0.4.0", path = "crates/simile-learning" }
@@ -61,10 +62,10 @@ simile-openapi = { version = "=0.4.0", path = "crates/simile-openapi" }
 simile-runtime = { version = "=0.4.0", path = "crates/simile-runtime" }
 simile-schema = { version = "=0.4.0", path = "crates/simile-schema" }
 simile-server = { version = "=0.4.0", path = "crates/simile-server" }
-simile-service = { version = "=0.4.0", path = "crates/simile-service" }
+simile-service = { version = "=0.4.0", path = "crates/simile-service", default-features = false }
 simile-smithy = { version = "=0.4.0", path = "crates/simile-smithy" }
 simile-spec = { version = "=0.4.0", path = "crates/simile-spec" }
-simile-stack = { version = "=0.4.0", path = "crates/simile-stack" }
+simile-stack = { version = "=0.4.0", path = "crates/simile-stack", default-features = false }
 simile-typescript = { version = "=0.4.0", path = "crates/simile-typescript" }
 snapbox = { version = "1.2.2", features = ["cmd"] }
 thiserror = "2.0.17"
@@ -75,6 +76,9 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
 tree-sitter = "0.20.10"
 tree-sitter-smithy = "0.0.1"
 ureq = "3.5.2"
+web-time = "=1.1.0"
+wasm-bindgen = "=0.2.100"
+wasm-bindgen-test = "=0.3.50"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -13,6 +13,7 @@ mod http;
 mod journal;
 mod mail;
 mod object_store;
+#[cfg(feature = "process")]
 pub mod process;
 mod protocol;
 mod queue;
@@ -40,5 +41,7 @@ pub use protocol::{
 pub use queue::{QueueCommand, QueueMessage, QueueResult};
 pub use scheduler::{ScheduledTask, SchedulerCommand, SchedulerResult, TaskState};
 pub use stack::{AdvanceReport, Stack, StackBuilder, StackSnapshot};
-pub use store::{MemoryStateStore, RedbStateStore, StateIdentity, StateStore, StateStoreError};
+#[cfg(feature = "persistence")]
+pub use store::RedbStateStore;
+pub use store::{MemoryStateStore, StateIdentity, StateStore, StateStoreError};
 pub use time::{Clock, ClockError, ClockMode, ClockSnapshot, LogicalTime};

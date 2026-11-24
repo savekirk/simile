@@ -110,12 +110,14 @@ pub enum Error {
     #[error("request contains duplicate case-insensitive `{name}` headers")]
     DuplicateRequestHeader { name: String },
 
+    #[cfg(feature = "native")]
     #[error("could not read remote service source: {source}")]
     FetchSource {
         #[source]
         source: ureq::Error,
     },
 
+    #[cfg(feature = "native")]
     #[error("could not fetch service configuration `{url}`: {source}")]
     FetchConfig {
         url: String,
@@ -259,6 +261,7 @@ pub enum Error {
         reproduced: String,
     },
 
+    #[cfg(feature = "native")]
     #[error("report preflight failed at `{endpoint}`: {source}")]
     ReportPreflight {
         endpoint: String,
@@ -266,6 +269,7 @@ pub enum Error {
         source: ureq::Error,
     },
 
+    #[cfg(feature = "native")]
     #[error("report submission failed at `{endpoint}`: {source}")]
     ReportSubmission {
         endpoint: String,
