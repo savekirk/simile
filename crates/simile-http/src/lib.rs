@@ -8,7 +8,7 @@ use serde_json::json;
 use simile_artifact::Artifact;
 use simile_runtime::{
     ExecutionOptions, IncomingParameters, OperationCall, ReplayIdentity, Runtime, TransportPlan,
-    validate_parameters,
+    ValidatedParameters, validate_parameters,
 };
 use simile_service::Service;
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,8 +19,7 @@ pub use webhook::{
 pub type Response = http::Response<Vec<u8>>;
 pub const DEFAULT_BODY_LIMIT: usize = 8 * 1024 * 1024;
 
-/// Byte collection failures are passed through so routing/authentication retain
-/// their existing precedence over body-size errors.
+/// Body collection results, consumed only after request-head validation.
 pub enum RequestBody {
     Bytes(Vec<u8>),
     TooLarge,
@@ -54,13 +53,47 @@ pub struct HttpExchange {
     pub incident: Option<RuntimeIncident>,
 }
 
+/// A validated request head bound to its service, options, and response seed.
+/// Consume it once the host has collected the bounded body.
+pub struct PreparedRequest<'a> {
+    service: &'a Service,
+    options: &'a HttpOptions,
+    head: RequestHead,
+    exchange: HttpExchange,
+}
+
+struct RequestHead {
+    method: Method,
+    operation: String,
+    incoming: IncomingParameters,
+    parameters: ValidatedParameters,
+    content_type: Option<String>,
+    idempotency_key: Option<String>,
+    resource_identity: String,
+    profile: Option<String>,
+}
+
 pub fn handle_request(
     service: &Service,
     routes: &RouteTable,
     request: Request<RequestBody>,
     options: &HttpOptions,
 ) -> HttpExchange {
-    let head = request.method() == Method::HEAD;
+    let (parts, body) = request.into_parts();
+    match prepare_request_head(service, routes, &parts, options) {
+        Ok(prepared) => prepared.handle_body(body),
+        Err(exchange) => *exchange,
+    }
+}
+
+/// Route, authenticate, and validate parameters and headers without reading a body.
+/// Streaming hosts must call this before polling the request body.
+pub fn prepare_request_head<'a>(
+    service: &'a Service,
+    routes: &RouteTable,
+    parts: &http::request::Parts,
+    options: &'a HttpOptions,
+) -> Result<PreparedRequest<'a>, Box<HttpExchange>> {
     let mut exchange = HttpExchange {
         response: Response::new(Vec::new()),
         transport: TransportPlan::Respond,
@@ -70,72 +103,126 @@ pub fn handle_request(
         fault: None,
         incident: None,
     };
-    exchange.response = dispatch(service, routes, request, options, &mut exchange);
-    if head {
-        exchange.response.body_mut().clear();
+    match validate_head(service, routes, parts, &mut exchange) {
+        Ok(head) => Ok(PreparedRequest {
+            service,
+            options,
+            head,
+            exchange,
+        }),
+        Err(response) => Err(Box::new(finish_exchange(
+            exchange,
+            *response,
+            parts.method == Method::HEAD,
+        ))),
     }
+}
+
+impl PreparedRequest<'_> {
+    pub fn handle_body(mut self, body: RequestBody) -> HttpExchange {
+        let head = self.head.method == Method::HEAD;
+        let response = dispatch(
+            self.service,
+            self.head,
+            body,
+            self.options,
+            &mut self.exchange,
+        );
+        finish_exchange(self.exchange, response, head)
+    }
+}
+
+fn finish_exchange(mut exchange: HttpExchange, mut response: Response, head: bool) -> HttpExchange {
+    if head {
+        response.body_mut().clear();
+    }
+    exchange.response = response;
     exchange
 }
 
-fn dispatch(
+fn validate_head(
     service: &Service,
     routes: &RouteTable,
-    request: Request<RequestBody>,
-    options: &HttpOptions,
+    parts: &http::request::Parts,
     exchange: &mut HttpExchange,
-) -> Response {
-    let method = request.method().clone();
-    let uri = request.uri().clone();
-    let (operation, path_parameters) = match routes.find(&method, uri.path()) {
+) -> Result<RequestHead, Box<Response>> {
+    let method = parts.method.clone();
+    let (operation, path_parameters) = match routes.find(&method, parts.uri.path()) {
         Match::Operation { operation, path } => (operation.to_owned(), path),
-        Match::MethodNotAllowed(methods) => return method_not_allowed(methods),
+        Match::MethodNotAllowed(methods) => return Err(Box::new(method_not_allowed(methods))),
         Match::NotFound => {
-            return error_response(StatusCode::NOT_FOUND, "not_found", "route not found");
+            return Err(Box::new(error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "route not found",
+            )));
         }
     };
     exchange.operation = Some(operation.clone());
-    let incoming = incoming_parameters(&request, path_parameters);
+    let incoming = incoming_parameters(parts, path_parameters);
     let authentication = match service.authenticate(&operation, &incoming) {
         Ok(authentication) => authentication,
         Err(simile_service::Error::Runtime(error)) => {
-            return operation_error(
+            return Err(Box::new(operation_error(
                 service.runtime(),
                 &operation,
                 error,
                 method == Method::HEAD,
                 exchange.seed,
-            );
+            )));
         }
         Err(_) => {
-            return error_response(
+            return Err(Box::new(error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "profile_state_unavailable",
                 "service profile state is unavailable",
-            );
+            )));
         }
     };
     let parameters = match validate_parameters(service.artifact(), &operation, &incoming) {
         Ok(parameters) => parameters,
         Err(error) => {
-            return operation_error(
+            return Err(Box::new(operation_error(
                 service.runtime(),
                 &operation,
                 error,
                 method == Method::HEAD,
                 exchange.seed,
-            );
+            )));
         }
     };
-    let content_type = match header(request.headers(), CONTENT_TYPE.as_str()) {
-        Ok(value) => value,
-        Err(response) => return *response,
-    };
-    let idempotency_key = match header(request.headers(), "idempotency-key") {
-        Ok(value) => value,
-        Err(response) => return *response,
-    };
-    let resource_identity = uri.to_string();
-    let body = match request.into_body() {
+    let content_type = header(&parts.headers, CONTENT_TYPE.as_str())?;
+    let idempotency_key = header(&parts.headers, "idempotency-key")?;
+    Ok(RequestHead {
+        method,
+        operation,
+        incoming,
+        parameters,
+        content_type,
+        idempotency_key,
+        resource_identity: parts.uri.to_string(),
+        profile: authentication.profile().map(str::to_owned),
+    })
+}
+
+fn dispatch(
+    service: &Service,
+    head: RequestHead,
+    body: RequestBody,
+    options: &HttpOptions,
+    exchange: &mut HttpExchange,
+) -> Response {
+    let RequestHead {
+        method,
+        operation,
+        incoming,
+        parameters,
+        content_type,
+        idempotency_key,
+        resource_identity,
+        profile,
+    } = head;
+    let body = match body {
         RequestBody::Bytes(body) if body.len() <= options.body_limit => body,
         _ => {
             return error_response(
@@ -151,7 +238,7 @@ fn dispatch(
         .or_else(|| {
             (method == Method::GET).then_some(ReplayIdentity::Resource(&resource_identity))
         });
-    exchange.profile = authentication.profile().map(str::to_owned);
+    exchange.profile = profile;
     match service.execute_for_profile_with_options(
         OperationCall {
             operation: &operation,
@@ -425,11 +512,11 @@ fn sensitive_name(name: &str) -> bool {
 }
 
 fn incoming_parameters(
-    request: &Request<RequestBody>,
+    parts: &http::request::Parts,
     path: BTreeMap<String, Vec<String>>,
 ) -> IncomingParameters {
     let mut query = BTreeMap::<String, Vec<String>>::new();
-    if let Some(raw) = request.uri().query() {
+    if let Some(raw) = parts.uri.query() {
         for (name, value) in form_urlencoded::parse(raw.as_bytes()) {
             query
                 .entry(name.into_owned())
@@ -438,9 +525,9 @@ fn incoming_parameters(
         }
     }
     let mut headers = BTreeMap::<String, Vec<String>>::new();
-    for name in request.headers().keys() {
-        let values = request
-            .headers()
+    for name in parts.headers.keys() {
+        let values = parts
+            .headers
             .get_all(name)
             .iter()
             .filter_map(|value| value.to_str().ok())
@@ -451,7 +538,7 @@ fn incoming_parameters(
         }
     }
     let mut cookies = BTreeMap::<String, Vec<String>>::new();
-    for value in request.headers().get_all(COOKIE).iter() {
+    for value in parts.headers.get_all(COOKIE).iter() {
         let Ok(value) = value.to_str() else {
             continue;
         };

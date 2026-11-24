@@ -67,6 +67,26 @@ pub fn exercise(service: &Service) -> Result<(), Box<dyn std::error::Error>> {
             assert!(exchange.response.body().is_empty());
         }
     }
+    // Body collection errors must not override a rejection determined by the head.
+    for (method, uri, expected) in [
+        ("GET", "/absent", 404),
+        ("HEAD", "/absent", 404),
+        ("PUT", "/items/7", 405),
+        ("GET", "/items/7?tag=one", 400),
+        ("POST", "/items", 413),
+    ] {
+        let request = request(method, uri, vec![])?.map(|_| RequestBody::TooLarge);
+        let exchange = simile_http::handle_request(service, &routes, request, &options());
+        assert_eq!(
+            exchange.response.status().as_u16(),
+            expected,
+            "{method} {uri}"
+        );
+        assert_eq!(exchange.seed, u64::MAX);
+        if method == "HEAD" {
+            assert!(exchange.response.body().is_empty());
+        }
+    }
     let signature = simile_spec::WebhookSigning {
         header: "x-signature".to_owned(),
         timestamp_header: "x-timestamp".to_owned(),

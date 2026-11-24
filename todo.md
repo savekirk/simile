@@ -25,6 +25,9 @@ remain outside this stack.
 - [x] Share workspace composition, audit, description, baseline, replay,
   conformance, state, and session operations with native adapters.
 - [x] Share listener-independent HTTP handling and webhook preparation.
+- [x] Reject invalid request heads before collecting native bodies. A stalled-body
+  regression reproduces the old delay and passes 14 fixed-length/chunked cases
+  after the fix; native/browser fixtures retain body-limit error precedence.
 - [x] Verify parity with controlled sources, artifacts, seeds, clocks, and signing
   timestamps, including HTTP error and wire behavior.
 - [x] Pass formatting, Clippy, workspace tests, rustdoc, cargo-deny, and the
