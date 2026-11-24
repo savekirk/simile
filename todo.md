@@ -127,6 +127,10 @@ The first three implementation PRs are merged; the playground builds on `origin/
   `07d1849` are green. Keep the existing runner matrix and ARM coverage.
 - [x] Verify 21 frontend unit tests and 13 Chromium tests, typecheck/lint/build,
   native downloaded-workspace handoff, and all five repository checks.
+- [x] Document WASM and playground architecture beside their source. The guides
+  explain ownership, messages, compilation, sessions, and persistence, with seven
+  rendered Mermaid diagrams and an ASCII screen map. Local links and all five
+  repository checks pass.
 
 ## Decisions and tradeoffs
 
@@ -221,6 +225,7 @@ The first three implementation PRs are merged; the playground builds on `origin/
   supplied playground screenshots. Per-operation requests, visible diagnostics,
   file-type formatting, contextual help, and both-theme readability are verified.
   Petstore is available as a bundled sample, and compiler failures are recoverable.
+  Linked architecture guides explain the WASM host and playground workflows.
 
 ## Exit gate
 
@@ -248,5 +253,6 @@ The first three implementation PRs are merged; the playground builds on `origin/
   body detection/removal. The updated Worker harness passes 149 assertions.
   Native tests verify credential attachment
   and read-only inspection; exported workspaces and bundles run with the CLI.
-  The PR targets `wasm`. The previous revision passed all six fork CI jobs;
-  refreshed CI will verify compiler recovery and the Petstore sample.
+  The PR targets `wasm`. The implementation revision `487d33d` passed all six fork
+  CI jobs, including compiler recovery and the Petstore sample. Architecture
+  documentation has validated diagrams and source links; repository checks pass.

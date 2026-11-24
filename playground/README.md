@@ -6,6 +6,9 @@ API. The Orders starter follows `docs/define-a-service.md`; its Simfile referenc
 the exact exported paths. A multi-file TypeScript starter and blank OpenAPI are
 also available.
 
+See [Playground architecture](ARCHITECTURE.md) for the screen structure, two-Worker
+design, compilation and persistence flows, and a guide to the source files.
+
 **New workspace → Swagger Petstore** loads a bundled conversion of
 [the Petstore Swagger 2.0 sample](https://petstore.swagger.io/v2/swagger.json) to
 OpenAPI 3.0.3. All 20 operations are retained. Try POST /store/order with the

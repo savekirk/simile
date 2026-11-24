@@ -4,6 +4,9 @@ This crate builds with Rust 1.85 for `wasm32-unknown-unknown`. It enables browse
 entropy at the host boundary; native crates keep their default behavior. Smithy
 source compilation is native-only, but compatible compiled artifacts are portable.
 
+See [WASM architecture](ARCHITECTURE.md) for crate boundaries, Worker messaging,
+artifact and session lifetimes, and checkpoint behavior.
+
 Install the target, the pinned test runner, and Chrome with a matching Chromedriver:
 
 ```sh
