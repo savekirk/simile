@@ -228,12 +228,14 @@ export function Workbench({
           onValueChange={(value) => setTab(String(value))}
           className="mt-5"
         >
-          <TabsList variant="line">
-            <TabsTrigger value="request">HTTP request</TabsTrigger>
-            <TabsTrigger value="profiles">Profiles & setup</TabsTrigger>
-            <TabsTrigger value="state">Stack & journal</TabsTrigger>
-            <TabsTrigger value="work">Work & webhooks</TabsTrigger>
-          </TabsList>
+          <div className="min-w-0 overflow-x-auto pb-2">
+            <TabsList variant="line">
+              <TabsTrigger value="request">HTTP request</TabsTrigger>
+              <TabsTrigger value="profiles">Profiles & setup</TabsTrigger>
+              <TabsTrigger value="state">Stack & journal</TabsTrigger>
+              <TabsTrigger value="work">Work & webhooks</TabsTrigger>
+            </TabsList>
+          </div>
           <TabsContent value="request">
             <RequestPanel
               key={state.active.revision}

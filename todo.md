@@ -84,7 +84,10 @@ The first three implementation PRs are merged; the playground builds on `origin/
   Rust tests, 146 Worker assertions, and frontend typecheck/lint/build/unit checks.
 - [x] Publish [the playground PR](https://github.com/savekirk/simile/pull/5) on
   origin with base `wasm`; leave the PR open and `origin/wasm` untouched.
-- [ ] Inspect the playground PR's final CI results.
+- [x] Inspect [fork CI](https://github.com/savekirk/simile/actions/runs/45388521715):
+  all six jobs pass, including Chromium and native Linux, macOS, and Windows.
+- [x] Keep Workbench tabs inside narrow screens. The browser regression now checks
+  all six views and every Workbench panel at 390 px width.
 
 ## Decisions and tradeoffs
 
@@ -173,4 +176,4 @@ The first three implementation PRs are merged; the playground builds on `origin/
   Thirteen frontend unit tests cover persistence races, incompatible cached
   artifacts, paths, and lossless values. Native tests verify credential attachment
   and read-only inspection; exported workspaces and bundles run with the CLI.
-  The PR is published against `wasm`; CI verification is pending.
+  The PR is published against `wasm`; all six fork CI jobs pass.

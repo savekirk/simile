@@ -191,6 +191,29 @@ test("TypeScript starter compiles and mobile navigation stays in bounds", async 
       () => document.documentElement.scrollWidth <= window.innerWidth
     )
   ).toBe(true)
+  await page.getByRole("tab", { name: "Workbench", exact: true }).click()
+  await page.getByRole("button", { name: "Start service", exact: true }).click()
+  await expect(page.getByText(/Running [a-f0-9]{8}/)).toBeVisible()
+  for (const name of [
+    "Author",
+    "Describe",
+    "Audit",
+    "Baseline",
+    "Reproduction",
+    "Workbench",
+    "Profiles & setup",
+    "Stack & journal",
+    "Work & webhooks",
+    "HTTP request",
+  ]) {
+    await page.getByRole("tab", { name, exact: true }).click()
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth
+      ),
+      name
+    ).toBe(true)
+  }
   await page.getByRole("button", { name: "Project", exact: true }).click()
   await expect(
     page.getByRole("heading", { name: "Project explorer" })
