@@ -10,6 +10,8 @@ remain outside this stack.
   `upstream` is fetch-only. The fetched upstream master is an ancestor of
   `origin/wasm` (`c0a73b3`), so no rebase rehearsal is needed.
 - [x] Separate native dependencies and preserve native defaults.
+- [x] Pin CI and release checkout steps to v7.0.1; regenerate the release workflow
+  with the configured `dist` 0.32.0. Keep immutable commit pins.
 - [x] Support browser entropy and clocks on Rust 1.85.
 - [x] Run OpenAPI/HCL, multi-file TypeScript, artifact decode, and seeded execution
   in a real browser; assert the portable dependency exclusions.
