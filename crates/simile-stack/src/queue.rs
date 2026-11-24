@@ -120,6 +120,22 @@ pub(crate) struct QueueEngine {
 }
 
 impl QueueEngine {
+    pub(crate) fn lease_is_current(
+        &self,
+        resource: &str,
+        message_id: &str,
+        receipt_handle: &str,
+        now: LogicalTime,
+    ) -> bool {
+        self.resources.get(resource).is_some_and(|messages| {
+            messages.iter().any(|message| {
+                message.id == message_id
+                    && message.receipt_handle.as_deref() == Some(receipt_handle)
+                    && message.available_at > now
+            })
+        })
+    }
+
     pub(crate) fn execute(
         &mut self,
         resource: &str,

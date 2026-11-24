@@ -73,7 +73,10 @@ restore, and replacement invalidate work handles; they are never persisted.
 
 `stepWork` leases only causally ready work. Execute async work or prepare webhook
 bytes and explicitly acknowledge/retry the simulated delivery. Inspection uses a
-snapshot and never leases work. Exporting a checkpoint captures bytes; it does not
+snapshot and never leases work. Handles expire at their queue visibility deadline
+(30,000 ms after leasing). Expired or replaced receipts return `stale_handle`
+without changing state. Async execution and acknowledgement commit together.
+Exporting a checkpoint captures bytes; it does not
 claim persistence. There is no UI, IndexedDB integration, or webhook network sender.
 The Worker retains candidates until termination and transfers only response-owned
 buffers; inputs remain reusable by the caller.

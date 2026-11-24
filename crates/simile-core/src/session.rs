@@ -301,7 +301,11 @@ impl ServiceSession {
     }
 
     fn lease(&self, handle: &str) -> Result<&WorkLease> {
-        self.handles.get(handle).ok_or(Error::WorkHandle)
+        let lease = self.handles.get(handle).ok_or(Error::WorkHandle)?;
+        self.service
+            .validate_work_lease(lease)
+            .map_err(work_error)?;
+        Ok(lease)
     }
 
     pub fn prepare_webhook(
@@ -340,21 +344,37 @@ impl ServiceSession {
                 "webhook delivery requires an explicit simulated acknowledgement".to_owned(),
             ));
         }
-        self.service.execute_work(lease)?;
-        self.acknowledge_work(handle)
+        self.service
+            .execute_and_acknowledge_work(lease)
+            .map_err(work_error)?;
+        self.handles.remove(handle);
+        self.changed();
+        Ok(())
     }
 
     pub fn acknowledge_work(&mut self, handle: &str) -> Result<()> {
-        self.service.acknowledge_work(self.lease(handle)?)?;
+        self.service
+            .acknowledge_work(self.lease(handle)?)
+            .map_err(work_error)?;
         self.handles.remove(handle);
         self.changed();
         Ok(())
     }
 
     pub fn retry_work(&mut self, handle: &str, delay: u64) -> Result<bool> {
-        let retrying = self.service.retry_work(self.lease(handle)?, delay)?;
+        let retrying = self
+            .service
+            .retry_work(self.lease(handle)?, delay)
+            .map_err(work_error)?;
         self.handles.remove(handle);
         self.changed();
         Ok(retrying)
+    }
+}
+
+fn work_error(error: simile_service::Error) -> Error {
+    match error {
+        simile_service::Error::StaleWorkLease => Error::WorkHandle,
+        error => Error::Service(error),
     }
 }

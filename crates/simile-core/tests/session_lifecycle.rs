@@ -114,3 +114,107 @@ fn invalid_checkpoints_preserve_the_live_session() -> Result<(), Box<dyn std::er
     assert_eq!(session.export_checkpoint()?, original);
     Ok(())
 }
+
+#[test]
+fn expired_work_handles_reject_without_mutating_state() -> Result<(), Box<dyn std::error::Error>> {
+    let compiled = compiled()?;
+    for lease_again in [false, true] {
+        let mut session = ServiceSession::new(&compiled.bytes)?;
+        session.handle_request_with_seed(request()?, Some(1));
+        let old = session.step_work(10)?;
+        session.advance(30_000)?;
+        let mut current = if lease_again {
+            session.step_work(10)?
+        } else {
+            vec![]
+        };
+        let before = session.export_checkpoint()?;
+        for item in &old {
+            if item.kind == "async" {
+                assert!(matches!(
+                    session.execute_work(&item.handle),
+                    Err(simile_core::Error::WorkHandle)
+                ));
+                assert_eq!(session.export_checkpoint()?, before);
+            }
+            assert!(matches!(
+                session.acknowledge_work(&item.handle),
+                Err(simile_core::Error::WorkHandle)
+            ));
+            assert_eq!(session.export_checkpoint()?, before);
+            assert!(matches!(
+                session.retry_work(&item.handle, 0),
+                Err(simile_core::Error::WorkHandle)
+            ));
+            assert_eq!(session.export_checkpoint()?, before);
+        }
+        if !lease_again {
+            current = session.step_work(10)?;
+        }
+        let work = current
+            .iter()
+            .find(|item| item.kind == "async")
+            .ok_or("missing async work")?;
+        assert!(
+            old.iter()
+                .any(|item| item.id == work.id && item.handle != work.handle)
+        );
+        session.execute_work(&work.handle)?;
+        let completed = session.export_checkpoint()?;
+        assert!(matches!(
+            session.execute_work(&work.handle),
+            Err(simile_core::Error::WorkHandle)
+        ));
+        assert_eq!(session.export_checkpoint()?, completed);
+        let stack = simile_stack::Stack::from_snapshot(session.service().snapshot()?);
+        assert_eq!(
+            stack
+                .journal()
+                .entries()
+                .iter()
+                .filter(|entry| entry.resource.to_string() == "event_bus.events"
+                    && entry.action == "publish")
+                .count(),
+            1
+        );
+        let webhook = current
+            .iter()
+            .find(|item| item.kind == "webhook")
+            .ok_or("missing webhook")?;
+        assert!(session.retry_work(&webhook.handle, 0)?);
+        assert_eq!(
+            session
+                .step_work(10)?
+                .iter()
+                .filter(|item| item.name == webhook.name)
+                .count(),
+            1
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn work_handles_remain_valid_until_the_visibility_deadline()
+-> Result<(), Box<dyn std::error::Error>> {
+    let compiled = compiled()?;
+    let mut session = ServiceSession::new(&compiled.bytes)?;
+    session.handle_request_with_seed(request()?, Some(1));
+    let work = session.step_work(10)?;
+    session.advance(29_999)?;
+    session.execute_work(
+        &work
+            .iter()
+            .find(|item| item.kind == "async")
+            .ok_or("missing async work")?
+            .handle,
+    )?;
+    session.acknowledge_work(
+        &work
+            .iter()
+            .find(|item| item.kind == "webhook")
+            .ok_or("missing webhook")?
+            .handle,
+    )?;
+    Ok(())
+}

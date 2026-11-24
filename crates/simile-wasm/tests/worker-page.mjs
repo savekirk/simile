@@ -177,6 +177,37 @@ async function main() {
   check(await faultSequence() === faults, "restore did not restart fault RNG progress");
   await client.call("resetState", {});
   check(await faultSequence() === faults, "reset did not restart fault RNG progress");
+  for (const receiveAgain of [false, true]) {
+    await client.call("startSession", { revision });
+    await call("1");
+    const expired = await client.call("stepWork", { limit: 10 });
+    await client.call("advanceClock", { milliseconds: "30000" });
+    let current = receiveAgain ? await client.call("stepWork", { limit: 10 }) : [];
+    const before = decode((await client.call("exportCheckpoint", {})).bytes);
+    for (const item of expired) {
+      const actions = [
+        ["acknowledgeWork", { handle: item.handle }],
+        ["retryWork", { handle: item.handle, delay: "0" }],
+        item.kind === "async"
+          ? ["executeWork", { handle: item.handle }]
+          : ["prepareWebhook", { handle: item.handle, timestamp: "0" }],
+      ];
+      for (const [method, input] of actions) {
+        await rejects(() => client.call(method, input), "stale_handle");
+        check(decode((await client.call("exportCheckpoint", {})).bytes) === before, `${method} mutated state through an expired handle`);
+      }
+    }
+    if (!receiveAgain) current = await client.call("stepWork", { limit: 10 });
+    const async = current.find(item => item.kind === "async");
+    check(expired.some(item => item.id === async.id && item.handle !== async.handle), "renewed work must retain its identity with a new handle");
+    await client.call("executeWork", { handle: async.handle });
+    const completed = decode((await client.call("exportCheckpoint", {})).bytes);
+    await rejects(() => client.call("executeWork", { handle: async.handle }), "stale_handle");
+    check(decode((await client.call("exportCheckpoint", {})).bytes) === completed, "completed work executed again");
+    const hook = current.find(item => item.kind === "webhook");
+    check((await client.call("retryWork", { handle: hook.handle, delay: "0" })).retrying, "renewed webhook could not retry");
+    check((await client.call("stepWork", { limit: 10 })).filter(item => item.name === hook.name).length === 1, "retry duplicated the original webhook");
+  }
   await client.call("startSession", { revision, options: { clockMode: "realtime" } });
   check((await client.call("status", {})).clockMode === "realtime", "Worker realtime clock did not initialize");
   check(Math.abs(Number((await client.call("status", {})).clockMilliseconds) - Date.now()) < 10_000, "realtime session did not start at browser wall time");

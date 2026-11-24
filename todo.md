@@ -41,13 +41,19 @@ remain outside this stack.
 - [x] Add thin bindings and typed Worker messages with lossless payload boundaries.
 - [x] Implement atomic imports, reset, and compatible checkpoint restoration with
   fresh runtime state and invalidated work handles.
+- [x] Reject expired or replaced work receipts before side effects. The regression
+  failed before the fix; native and Worker tests now preserve checkpoint bytes
+  after rejected execution, acknowledgement, retry, and webhook preparation.
+  Tests cover the 29,999/30,000 ms boundary, re-leasing, duplicate completion,
+  retry without duplication, and rollback after a failed save.
 - [x] Verify boundary values, CLI Smithy artifacts, and session lifecycle in a browser.
-  Chromium passes five shared Rust tests and 112 Worker assertions; native lifecycle
+  Chromium passes five shared Rust tests and 146 Worker assertions; native lifecycle
   tests cover snapshot equality, lease visibility, and invalid imports.
 - [x] Pass formatting, Clippy, workspace tests, rustdoc, cargo-deny, and the
   portable dependency check under Rust 1.85. TypeScript compiles in strict mode.
 - [x] Publish [the WASM API PR](https://github.com/savekirk/simile/pull/4) against
-  `browser/shared-workflows`; verify all three bases and keep the PRs open.
+  `browser/shared-workflows`; verify all three bases. The prerequisite PRs have
+  since been merged; the remaining PR now targets `wasm` and stays open for review.
 - [x] Inspect the final fork CI results. All six jobs pass on each implementation
   revision: [portable core](https://github.com/savekirk/simile/actions/runs/45288474136),
   [shared workflows](https://github.com/savekirk/simile/actions/runs/45288472817), and
@@ -81,6 +87,11 @@ remain outside this stack.
 - Checkpoints restore the complete Stack into a fresh runtime and require an exact
   artifact match. Replay caches and fault RNG progress restart; leases keep their
   visibility deadlines. Reset, restore, and replacement invalidate work handles.
+- Validate receipts with a read-only Stack lookup so rejection cannot change the
+  journal or counters. Session async execution and acknowledgement share one
+  transaction so a failed acknowledgement cannot leave committed effects. Keep
+  the separate native execution interface; validate all service lease mutations,
+  including defer and dead-letter redelivery, under the Stack lock.
 - Keep candidate artifacts until Worker termination for this API foundation;
   eviction and compilation cancellation belong with the later UI lifecycle.
   Inputs are cloned; only response-owned buffers are transferred.
@@ -112,4 +123,5 @@ remain outside this stack.
   native Smithy artifacts, invalid imports, checkpoint compatibility, dynamic
   profiles, stale handles/generations, lease recovery, and fresh replay/fault state.
   Request synthesis feeds baseline execution; causal work completion and delayed
-  retry run through the exported API.
+  retry run through the exported API. Expired and replaced work handles reject
+  without changing state; renewed handles still complete or retry exactly once.

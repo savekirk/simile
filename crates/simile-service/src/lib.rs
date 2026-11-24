@@ -356,30 +356,56 @@ impl Service {
 
     /// Execute the typed commands carried by one asynchronous work item.
     pub fn execute_work(&self, lease: &WorkLease) -> Result<()> {
-        let DeferredWork::Async {
-            operation,
-            commands,
-            ..
-        } = lease.work()
-        else {
-            return Ok(());
-        };
+        self.execute_leased_work(lease, false)
+    }
+
+    /// Execute and acknowledge work in one transaction, rolling back effects if
+    /// its receipt expires or the resulting checkpoint cannot be saved.
+    pub fn execute_and_acknowledge_work(&self, lease: &WorkLease) -> Result<()> {
+        self.execute_leased_work(lease, true)
+    }
+
+    /// Check a receipt without changing resource state, counters, or the journal.
+    pub fn validate_work_lease(&self, lease: &WorkLease) -> Result<()> {
+        let stack = lock(&self.stack)?;
+        validate_lease(&stack, OUTBOX, lease)
+    }
+
+    fn execute_leased_work(&self, lease: &WorkLease, acknowledge: bool) -> Result<()> {
         let mut stack = lock(&self.stack)?;
+        validate_lease(&stack, OUTBOX, lease)?;
+        if !acknowledge && !matches!(lease.work(), DeferredWork::Async { .. }) {
+            return Ok(());
+        }
         let before = stack.snapshot()?;
-        for command in commands {
-            let resource = command.resource.parse::<ResourceAddress>()?;
-            if let Err(error) = stack.execute(
-                resource,
-                CommandMetadata {
-                    operation_id: Some(operation.clone()),
-                    causation_id: Some(lease.id().to_owned()),
-                    ..CommandMetadata::default()
-                },
-                command.command.clone(),
-            ) {
-                *stack = Stack::from_snapshot(before);
-                return Err(error.into());
+        let result = (|| {
+            if let DeferredWork::Async {
+                operation,
+                commands,
+                ..
+            } = lease.work()
+            {
+                for command in commands {
+                    stack.execute(
+                        command.resource.parse::<ResourceAddress>()?,
+                        CommandMetadata {
+                            operation_id: Some(operation.clone()),
+                            causation_id: Some(lease.id().to_owned()),
+                            ..CommandMetadata::default()
+                        },
+                        command.command.clone(),
+                    )?;
+                }
             }
+            if acknowledge {
+                record_webhook_outcome(&mut stack, lease, true)?;
+                acknowledge_lease(&mut stack, OUTBOX, lease)?;
+            }
+            Ok::<(), Error>(())
+        })();
+        if let Err(error) = result {
+            *stack = Stack::from_snapshot(before);
+            return Err(error);
         }
         self.checkpoint(&mut stack, before)
     }
@@ -411,17 +437,27 @@ impl Service {
     /// budget tracks actual execution failures inside the work envelope.
     pub fn defer_work(&self, lease: &WorkLease, delay_milliseconds: u64) -> Result<()> {
         let mut stack = lock(&self.stack)?;
+        validate_lease(&stack, OUTBOX, lease)?;
         let before = stack.snapshot()?;
-        if let Err(error) = stack.execute(
-            ResourceAddress::new(ResourceKind::Queue, OUTBOX)?,
-            CommandMetadata::default(),
-            StackCommand::Queue(QueueCommand::Nack {
-                receipt_handle: lease.receipt_handle.clone(),
-                delay_ms: delay_milliseconds,
-            }),
-        ) {
+        let result = stack
+            .execute(
+                ResourceAddress::new(ResourceKind::Queue, OUTBOX)?,
+                CommandMetadata::default(),
+                StackCommand::Queue(QueueCommand::Nack {
+                    receipt_handle: lease.receipt_handle.clone(),
+                    delay_ms: delay_milliseconds,
+                }),
+            )
+            .map_err(Error::from)
+            .and_then(|receipt| match receipt.result {
+                StackResult::Queue(result) if matches!(*result, QueueResult::Released(true)) => {
+                    Ok(())
+                }
+                _ => Err(Error::StaleWorkLease),
+            });
+        if let Err(error) = result {
             *stack = Stack::from_snapshot(before);
-            return Err(error.into());
+            return Err(error);
         }
         self.checkpoint(&mut stack, before)
     }
@@ -494,6 +530,7 @@ impl Service {
     /// budget, then acknowledge its dead-letter record atomically.
     pub fn redeliver(&self, dead_letter: &DeadLetter) -> Result<()> {
         let mut stack = lock(&self.stack)?;
+        validate_lease(&stack, DEAD_LETTERS, &dead_letter.lease)?;
         let before = stack.snapshot()?;
         let result = (|| {
             stack.execute(
@@ -509,13 +546,7 @@ impl Service {
                     delay_ms: 0,
                 }),
             )?;
-            stack.execute(
-                ResourceAddress::new(ResourceKind::Queue, DEAD_LETTERS)?,
-                CommandMetadata::default(),
-                StackCommand::Queue(QueueCommand::Ack {
-                    receipt_handle: dead_letter.lease.receipt_handle.clone(),
-                }),
-            )?;
+            acknowledge_lease(&mut stack, DEAD_LETTERS, &dead_letter.lease)?;
             Ok::<(), Error>(())
         })();
         if let Err(error) = result {
@@ -672,6 +703,7 @@ impl Service {
 
     fn finish_lease(&self, lease: &WorkLease, disposition: LeaseDisposition) -> Result<()> {
         let mut stack = lock(&self.stack)?;
+        validate_lease(&stack, OUTBOX, lease)?;
         let before = stack.snapshot()?;
         let result = (|| {
             if matches!(disposition, LeaseDisposition::Acknowledge) {
@@ -712,13 +744,7 @@ impl Service {
                     }),
                 )?;
             }
-            stack.execute(
-                ResourceAddress::new(ResourceKind::Queue, OUTBOX)?,
-                CommandMetadata::default(),
-                StackCommand::Queue(QueueCommand::Ack {
-                    receipt_handle: lease.receipt_handle.clone(),
-                }),
-            )?;
+            acknowledge_lease(&mut stack, OUTBOX, lease)?;
             Ok::<(), Error>(())
         })();
         if let Err(error) = result {
@@ -757,6 +783,32 @@ enum LeaseDisposition {
     Acknowledge,
     Retry(u64),
     DeadLetter,
+}
+
+fn validate_lease(stack: &Stack, queue: &str, lease: &WorkLease) -> Result<()> {
+    if stack.queue_lease_is_current(
+        &ResourceAddress::new(ResourceKind::Queue, queue)?,
+        lease.id(),
+        &lease.receipt_handle,
+    )? {
+        Ok(())
+    } else {
+        Err(Error::StaleWorkLease)
+    }
+}
+
+fn acknowledge_lease(stack: &mut Stack, queue: &str, lease: &WorkLease) -> Result<()> {
+    let receipt = stack.execute(
+        ResourceAddress::new(ResourceKind::Queue, queue)?,
+        CommandMetadata::default(),
+        StackCommand::Queue(QueueCommand::Ack {
+            receipt_handle: lease.receipt_handle.clone(),
+        }),
+    )?;
+    match receipt.result {
+        StackResult::Queue(result) if matches!(*result, QueueResult::Acknowledged(true)) => Ok(()),
+        _ => Err(Error::StaleWorkLease),
+    }
 }
 
 fn record_webhook_outcome(stack: &mut Stack, lease: &WorkLease, completed: bool) -> Result<()> {
@@ -823,6 +875,8 @@ pub enum Error {
     ResourceSetChanged,
     #[error("deferred work is invalid: {0}")]
     InvalidWork(String),
+    #[error("work lease is expired or no longer current")]
+    StaleWorkLease,
     #[error("state-backed response cannot be represented by the operation contract")]
     StateResponseUnavailable,
     #[error("state read returned an unexpected result for {0}")]

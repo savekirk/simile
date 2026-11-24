@@ -9,6 +9,174 @@ use simile_stack::{
 };
 
 #[test]
+fn stale_work_receipts_cannot_mutate_service_state() -> Result<(), Box<dyn std::error::Error>> {
+    use simile_stack::{ClockMode, ClockSnapshot, LogicalTime};
+    for receive_again in [false, true] {
+        let service = Service::memory_with_clock(
+            deferred_work_artifact(),
+            ClockSnapshot {
+                mode: ClockMode::Manual,
+                now: LogicalTime::UNIX_EPOCH,
+            },
+        )?;
+        service.execute(OperationCall {
+            operation: "POST /orders",
+            content_type: None,
+            body: &[],
+        })?;
+        let lease = service.lease_work(1, None)?.pop().ok_or("missing work")?;
+        service.advance(30_000)?;
+        let mut current = if receive_again {
+            service.lease_work(1, None)?.pop()
+        } else {
+            None
+        };
+        let before = service.snapshot()?;
+        for operation in [
+            "execute",
+            "execute_ack",
+            "ack",
+            "retry",
+            "defer",
+            "dead_letter",
+        ] {
+            let result = match operation {
+                "execute" => service.execute_work(&lease),
+                "execute_ack" => service.execute_and_acknowledge_work(&lease),
+                "ack" => service.acknowledge_work(&lease),
+                "retry" => service.retry_work(&lease, 0).map(|_| ()),
+                "defer" => service.defer_work(&lease, 0),
+                _ => service.dead_letter_work(&lease),
+            };
+            assert!(
+                matches!(result, Err(simile_service::Error::StaleWorkLease)),
+                "{operation}"
+            );
+            assert_eq!(service.snapshot()?, before, "{operation}");
+        }
+        if !receive_again {
+            current = service.lease_work(1, None)?.pop();
+        }
+        service.execute_and_acknowledge_work(&current.ok_or("missing renewed work")?)?;
+        assert!(service.lease_work(1, None)?.is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn stale_dead_letter_receipts_cannot_duplicate_work() -> Result<(), Box<dyn std::error::Error>> {
+    use simile_stack::{ClockMode, ClockSnapshot, LogicalTime};
+    let service = Service::memory_with_clock(
+        deferred_work_artifact(),
+        ClockSnapshot {
+            mode: ClockMode::Manual,
+            now: LogicalTime::UNIX_EPOCH,
+        },
+    )?;
+    service.execute(OperationCall {
+        operation: "POST /orders",
+        content_type: None,
+        body: &[],
+    })?;
+    let lease = service.lease_work(1, None)?.pop().ok_or("missing work")?;
+    service.dead_letter_work(&lease)?;
+    let old = service
+        .dead_letters(1)?
+        .pop()
+        .ok_or("missing dead letter")?;
+    service.advance(30_000)?;
+    let before = service.snapshot()?;
+    assert!(matches!(
+        service.redeliver(&old),
+        Err(simile_service::Error::StaleWorkLease)
+    ));
+    assert_eq!(service.snapshot()?, before);
+    let current = service
+        .dead_letters(1)?
+        .pop()
+        .ok_or("missing renewed dead letter")?;
+    let before = service.snapshot()?;
+    assert!(matches!(
+        service.redeliver(&old),
+        Err(simile_service::Error::StaleWorkLease)
+    ));
+    assert_eq!(service.snapshot()?, before);
+    service.redeliver(&current)?;
+    assert_eq!(service.lease_work(10, None)?.len(), 1);
+    assert!(service.dead_letters(1)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn executing_and_acknowledging_work_rolls_back_on_store_failure()
+-> Result<(), Box<dyn std::error::Error>> {
+    use simile_stack::{
+        ClockMode, ClockSnapshot, LogicalTime, MemoryStateStore, StackSnapshot, StateStore,
+        StateStoreError,
+    };
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    #[derive(Default)]
+    struct Store {
+        memory: MemoryStateStore,
+        fail_next: AtomicBool,
+    }
+    impl StateStore for Store {
+        fn load(&self) -> Result<Option<StackSnapshot>, StateStoreError> {
+            self.memory.load()
+        }
+        fn save(&self, snapshot: &StackSnapshot) -> Result<(), StateStoreError> {
+            if self.fail_next.swap(false, Ordering::SeqCst) {
+                return Err(StateStoreError::Database(
+                    "injected save failure".to_owned(),
+                ));
+            }
+            self.memory.save(snapshot)
+        }
+    }
+    let store = Arc::new(Store::default());
+    let service = Service::with_store_and_clock(
+        deferred_work_artifact(),
+        store.clone(),
+        ClockSnapshot {
+            mode: ClockMode::Manual,
+            now: LogicalTime::UNIX_EPOCH,
+        },
+    )?;
+    service.execute(OperationCall {
+        operation: "POST /orders",
+        content_type: None,
+        body: &[],
+    })?;
+    let lease = service.lease_work(1, None)?.pop().ok_or("missing work")?;
+    let before = service.snapshot()?;
+    store.fail_next.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        service.execute_and_acknowledge_work(&lease),
+        Err(simile_service::Error::Store(_))
+    ));
+    assert_eq!(service.snapshot()?, before);
+    assert_eq!(store.load()?, Some(before));
+    service.validate_work_lease(&lease)?;
+    service.execute_and_acknowledge_work(&lease)?;
+    let stack = Stack::from_snapshot(service.snapshot()?);
+    assert_eq!(
+        stack
+            .journal()
+            .entries()
+            .iter()
+            .filter(|entry| entry.resource.to_string() == "event_bus.events"
+                && entry.action == "publish")
+            .count(),
+        1
+    );
+    assert!(service.lease_work(1, None)?.is_empty());
+    Ok(())
+}
+
+#[test]
 fn durable_outbox_survives_restart_and_acknowledgement() {
     let path = std::env::temp_dir().join(format!(
         "simile-service-outbox-{}-{}.redb",
