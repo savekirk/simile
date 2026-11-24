@@ -400,6 +400,7 @@ export default function App() {
                 <DropdownMenuGroup>
                   {[
                     ["orders", "Orders API"],
+                    ["petstore", "Swagger Petstore"],
                     ["typescript", "Semantic TypeScript"],
                     ["blank", "Blank OpenAPI"],
                   ].map(([kind, label]) => (
@@ -407,6 +408,10 @@ export default function App() {
                       key={kind}
                       onClick={() => {
                         model.edit(starter(kind))
+                        if (kind === "petstore") {
+                          setOperation("POST /store/order")
+                          setSelected("petstore.openapi.json")
+                        }
                         setRunnerVersion((version) => version + 1)
                         setToolOpen(false)
                       }}

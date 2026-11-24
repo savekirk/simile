@@ -6,6 +6,13 @@ API. The Orders starter follows `docs/define-a-service.md`; its Simfile referenc
 the exact exported paths. A multi-file TypeScript starter and blank OpenAPI are
 also available.
 
+**New workspace → Swagger Petstore** loads a bundled conversion of
+[the Petstore Swagger 2.0 sample](https://petstore.swagger.io/v2/swagger.json) to
+OpenAPI 3.0.3. All 20 operations are retained. Try POST /store/order with the
+place-order fixture, or GET /user/{username} in HTTP session. The sample includes
+usage notes and its license; no requests are sent to the public Petstore. Source
+provenance and conversion commands are in `src/templates/petstore/SOURCE.md`.
+
 ## Run locally
 
 Use Node 26.13.1, pnpm 12.23.0, Rust 1.85.0, and the matching binding tool:
@@ -68,6 +75,9 @@ Compilation uses a separate Worker, debounces edits, coalesces pending builds,
 and discards stale responses. It cannot replace the running revision. Cancel
 compilation to restart its Worker without losing the session. Runtime recovery is
 explicit and discards unsaved runtime state while retaining source edits.
+If the compiler Worker crashes or times out, its diagnostic remains visible and
+the next edit, Compile, or artifact import uses a fresh Worker. The active service
+and its runtime state stay intact; the failed compilation is not retried endlessly.
 
 Artifact imports validate before switching modes. Artifacts do not recover source
 files. Failed compilation/import/checkpoint validation keeps the active session.

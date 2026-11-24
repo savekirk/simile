@@ -21,6 +21,9 @@ export class Engine {
   private client = new SimileClient(this.worker)
   private pending = new Set<(error: Error) => void>()
   private closed = false
+  get isClosed() {
+    return this.closed
+  }
   constructor() {
     this.worker.addEventListener("error", () =>
       this.dispose("Engine failed. Restart it; source edits are preserved.")

@@ -84,10 +84,16 @@ Post-fix full-view and focused comparisons show no remaining actionable issues.
 Coverage is Chromium on this Linux host. These targeted contrast checks and visual
 reviews do not claim a full accessibility audit or cross-browser certification.
 
+The bundled Petstore workspace also passes a real-browser compile of all 20 routes,
+a fixture baseline, HTTP GET, and reload without any requests to petstore.swagger.io.
+`petstore-http.png` under `test-results/recovery-samples-*` records the rendered
+editor and HTTP 200 response. Separate browser tests inject a compiler crash and
+a timeout, then compile successfully while preserving the live service's clock.
+
 ## Verification
 
 - [x] Recheck desktop, mobile, light/dark, and HTTP layouts after visual fixes.
 - [x] Preserve authenticated create/read, checkpoints, async work, and reproduction.
-- [x] Pass typecheck, lint, build, 18 unit tests, and ten browser tests.
+- [x] Pass typecheck, lint, build, 21 unit tests, and 13 browser tests.
 - [x] Run the downloaded workspace and reproduction bundle with the native CLI.
 - [x] Pass all five Rust repository checks again after the usability changes.

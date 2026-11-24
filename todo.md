@@ -115,6 +115,18 @@ The first three implementation PRs are merged; the playground builds on `origin/
   recover from the reported GET /orders mismatch. Eighteen unit tests, ten browser
   tests, 149 Worker assertions, portable dependencies, native handoff, and all five
   repository checks pass.
+- [x] Address the compiler recovery review: closed Workers are replaced for the
+  next compile or artifact load, while source edits and the active runtime survive.
+  Unit tests cover failed imports and queued edits; browser tests inject both a
+  Worker crash and a timeout, then verify successful compilation and preserved time.
+- [x] Add the bundled Swagger Petstore sample with all 20 operations, a request
+  fixture, instructions, original snapshot, conversion provenance, and license.
+  Native compilation and browser baseline/HTTP/reload pass without remote API calls.
+- [x] Diagnose the cancelled macOS check: GitHub reported hosted arm64 capacity
+  exhaustion before any steps ran. Rerunning that job passed; all six jobs on
+  `07d1849` are green. Keep the existing runner matrix and ARM coverage.
+- [x] Verify 21 frontend unit tests and 13 Chromium tests, typecheck/lint/build,
+  native downloaded-workspace handoff, and all five repository checks.
 
 ## Decisions and tradeoffs
 
@@ -183,6 +195,13 @@ The first three implementation PRs are merged; the playground builds on `origin/
 - Fixture filtering checks whether a body is declared by the compiled contract,
   not the HTTP method or filename. Full schema validation remains in Rust. Body
   removal is explicit and edits syntax ranges so other payload values stay exact.
+- Bundle a pinned Swagger 2.0 snapshot converted to OpenAPI 3.0.3 with
+  swagger2openapi 7.0.8. This uses the existing importer without adding a runtime
+  dependency or broadening ingestion scope. Petstore is contract-only: no HCL
+  persistence effects or live upstream requests are added.
+- Replace a closed compiler engine without automatically repeating the failed
+  request. Users retain its diagnostic, and the next compile/edit/import can
+  proceed without risking a crash loop or replacing the active runtime.
 - No user decisions are currently blocking work.
 
 ## What was achieved
@@ -201,6 +220,7 @@ The first three implementation PRs are merged; the playground builds on `origin/
   Definition and execution now share a resizable workspace inspired by the
   supplied playground screenshots. Per-operation requests, visible diagnostics,
   file-type formatting, contextual help, and both-theme readability are verified.
+  Petstore is available as a bundled sample, and compiler failures are recoverable.
 
 ## Exit gate
 
@@ -218,14 +238,15 @@ The first three implementation PRs are merged; the playground builds on `origin/
   retry run through the exported API. Expired and replaced work handles reject
   without changing state; renewed handles still complete or retry exactly once.
 
-- Phase 4: passed locally. Ten production-browser tests verify authoring, audit,
+- Phase 4: passed locally. Thirteen production-browser tests verify authoring, audit,
   profile setup, authenticated create/read, time/work, checkpoint reload, baseline
   capture, replay/conformance, imports, revision isolation, storage recovery,
   new operation authoring, per-operation drafts, formatting, visible errors, and
-  light/dark contrast. Eighteen frontend unit tests cover persistence races,
+  light/dark contrast, Petstore, and compiler failure recovery. Twenty-one frontend
+  unit tests cover persistence races,
   incompatible cached artifacts, paths, lossless values, formatting, and request
   body detection/removal. The updated Worker harness passes 149 assertions.
   Native tests verify credential attachment
   and read-only inspection; exported workspaces and bundles run with the CLI.
   The PR targets `wasm`. The previous revision passed all six fork CI jobs;
-  refreshed CI will verify the usability revision.
+  refreshed CI will verify compiler recovery and the Petstore sample.

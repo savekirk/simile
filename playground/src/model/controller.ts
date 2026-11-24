@@ -87,7 +87,7 @@ export class Playground {
         let diagnostic: string | undefined
         if (stored.artifact) {
           try {
-            candidate = await this.compiler.call("loadArtifact", {
+            candidate = await this.compilerCall("loadArtifact", {
               bytes: stored.artifact.bytes,
             })
           } catch (error) {
@@ -153,6 +153,22 @@ export class Playground {
     clearTimeout(this.compileTimer)
     this.compileTimer = setTimeout(() => void this.compile(), 300)
   }
+  private async compilerCall<K extends "compileWorkspace" | "loadArtifact">(
+    method: K,
+    input: Methods[K]["input"]
+  ): Promise<Methods[K]["output"]> {
+    if (this.compiler.isClosed) this.compiler = new Engine()
+    const compiler = this.compiler
+    try {
+      return await compiler.call(method, input)
+    } catch (error) {
+      // Fatal Worker errors close the engine. Leave compilation diagnostics
+      // visible, but let the next edit, Compile, or import use a fresh Worker.
+      if (compiler === this.compiler && compiler.isClosed)
+        this.compiler = new Engine()
+      throw error
+    }
+  }
   async compile() {
     clearTimeout(this.compileTimer)
     if (this.compileRunning || this.state.mode !== "workspace") return
@@ -161,7 +177,7 @@ export class Playground {
     this.compileRunning = true
     this.set({ compiling: true })
     try {
-      const candidate = await this.compiler.call(
+      const candidate = await this.compilerCall(
         "compileWorkspace",
         workspace(this.state.project)
       )
@@ -202,7 +218,7 @@ export class Playground {
   }
   async importArtifact(bytes: Uint8Array) {
     // The candidate is validated before touching the visible workspace or session.
-    const candidate = await this.compiler.call("loadArtifact", { bytes })
+    const candidate = await this.compilerCall("loadArtifact", { bytes })
     this.compileEpoch++
     this.compileRunning = false
     clearTimeout(this.compileTimer)

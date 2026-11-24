@@ -1,16 +1,21 @@
 import { vi, expect, test, beforeEach } from "vitest"
 const mock = vi.hoisted(() => ({
   calls: [] as ReturnType<typeof vi.fn>[],
+  engines: [] as { isClosed: boolean; call: ReturnType<typeof vi.fn> }[],
   write: vi.fn(),
   read: vi.fn(),
 }))
 vi.mock("../src/worker/client", () => ({
   Engine: class {
     call = vi.fn()
+    isClosed = false
     constructor() {
       mock.calls.push(this.call)
+      mock.engines.push(this)
     }
-    dispose() {}
+    dispose() {
+      this.isClosed = true
+    }
   },
 }))
 vi.mock("../src/storage/idb", async (importOriginal) => ({
@@ -36,9 +41,66 @@ const status: SessionStatus = {
 }
 beforeEach(() => {
   mock.calls.length = 0
+  mock.engines.length = 0
   mock.write.mockReset()
   mock.read.mockReset()
   vi.useFakeTimers()
+})
+test("a failed compiler is replaced without touching the active service", async () => {
+  const model = new Playground()
+  const project = model.state.project
+  model.state.active = artifact
+  model.state.candidate = artifact
+  model.state.session = status
+  mock.calls[0].mockImplementation(() => {
+    mock.engines[0].isClosed = true
+    throw new Error("Engine timed out")
+  })
+  await model.compile()
+  expect(model.state.diagnostic).toContain("timed out")
+  expect(model.state.compiling).toBe(false)
+  expect(model.state.project).toBe(project)
+  expect(model.state.candidate).toBe(artifact)
+  const recovered = { ...artifact, revision: "recovered" }
+  mock.calls[2].mockResolvedValue(recovered)
+  await model.compile()
+  expect(model.state.candidate).toBe(recovered)
+  expect(model.state.diagnostic).toBeUndefined()
+  expect(model.state.active).toBe(artifact)
+  expect(model.state.session).toBe(status)
+  expect(mock.engines[1].isClosed).toBe(false)
+  expect(mock.calls[1]).not.toHaveBeenCalled()
+  vi.clearAllTimers()
+})
+
+test("artifact imports and queued edits recover after a compiler Worker failure", async () => {
+  const model = new Playground()
+  model.state.active = artifact
+  mock.calls[0].mockImplementation(() => {
+    mock.engines[0].isClosed = true
+    throw new Error("Worker failed")
+  })
+  await expect(model.importArtifact(new Uint8Array())).rejects.toThrow(
+    "Worker failed"
+  )
+  mock.calls[2].mockResolvedValue(artifact)
+  await model.importArtifact(artifact.bytes)
+  expect(model.state.candidate).toBe(artifact)
+
+  model.edit(starter("blank"))
+  mock.calls[2].mockImplementation(() => {
+    mock.engines[2].isClosed = true
+    model.edit({ ...starter("blank"), notes: "Edit during failed compile" })
+    throw new Error("Worker failed during compilation")
+  })
+  await model.compile()
+  const next = { ...artifact, revision: "edited" }
+  mock.calls[3].mockResolvedValue(next)
+  await vi.advanceTimersByTimeAsync(300)
+  expect(model.state.candidate).toBe(next)
+  expect(model.state.active).toBe(artifact)
+  expect(mock.calls[1]).not.toHaveBeenCalled()
+  vi.clearAllTimers()
 })
 test("stale compile results never replace the newer edit revision or active service", async () => {
   const model = new Playground()

@@ -1,6 +1,9 @@
 import orders from "../templates/orders.yaml?raw"
 import behavior from "../templates/orders.hcl?raw"
 import setup from "../templates/setup.hcl?raw"
+import petstore from "../templates/petstore/openapi.json?raw"
+import petstoreGuide from "../templates/petstore/README.md?raw"
+import petstoreLicense from "../templates/petstore/LICENSE.txt?raw"
 import type { Workspace } from "../../../crates/simile-wasm/web/contract"
 export interface Project {
   name: string
@@ -11,6 +14,21 @@ export interface Project {
   modules: string[]
 }
 export function starter(kind = "orders"): Project {
+  if (kind === "petstore")
+    return {
+      name: "Swagger Petstore",
+      notes:
+        "Bundled from https://petstore.swagger.io/v2/swagger.json and converted to OpenAPI 3.0.3. See README.md for provenance and examples. Responses run locally; no requests reach the public Petstore.",
+      modules: [],
+      contractEntry: "petstore.openapi.json",
+      files: {
+        "petstore.openapi.json": petstore,
+        "requests/place-order.json":
+          '{\n  "headers": { "Content-Type": "application/json" },\n  "body": { "id": 10, "petId": 7, "quantity": 1, "shipDate": "2026-11-24T00:00:00Z", "status": "placed", "complete": false }\n}\n',
+        "README.md": petstoreGuide,
+        "LICENSE.txt": petstoreLicense,
+      },
+    }
   if (kind === "typescript")
     return {
       name: "TypeScript service",

@@ -8,6 +8,36 @@ import {
 } from "../src/model/archive"
 import { setupValues } from "../src/model/setup"
 import { zipSync } from "fflate"
+import originalPetstore from "../src/templates/petstore/swagger.json?raw"
+
+test("the bundled Petstore conversion retains the upstream operations and schemas", () => {
+  const project = starter("petstore")
+  const source = JSON.parse(originalPetstore)
+  const contract = JSON.parse(project.files[project.contractEntry!])
+  const operations = (paths: Record<string, Record<string, unknown>>) =>
+    Object.entries(paths)
+      .flatMap(([path, methods]) =>
+        Object.keys(methods)
+          .filter((method) =>
+            /^(get|post|put|delete|patch|head|options)$/.test(method)
+          )
+          .map((method) => `${method} ${path}`)
+      )
+      .sort()
+  expect(contract.openapi).toBe("3.0.3")
+  expect(operations(contract.paths)).toEqual(operations(source.paths))
+  expect(operations(contract.paths)).toHaveLength(20)
+  expect(Object.keys(contract.components.schemas).sort()).toEqual(
+    Object.keys(source.definitions).sort()
+  )
+  expect(Object.keys(contract.components.securitySchemes).sort()).toEqual(
+    Object.keys(source.securityDefinitions).sort()
+  )
+  expect(contract.servers).toContainEqual({
+    url: "https://petstore.swagger.io/v2",
+  })
+  expect(project.files["LICENSE.txt"]).toContain("Apache License")
+})
 test("virtual paths and archive entries cannot escape the project", () => {
   for (const path of ["../secret", "/root/file", "a/../b", "a//b", "C:/file"])
     expect(() => safePath(path)).toThrow()
