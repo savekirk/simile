@@ -72,7 +72,7 @@ export function NoArtifact() {
       <EmptyHeader>
         <EmptyTitle>Compile your first revision</EmptyTitle>
         <EmptyDescription>
-          Use Author to create a service, or drop a compiled .similec artifact
+          Edit the definition and compile, or drop a compiled .similec artifact
           here.
         </EmptyDescription>
       </EmptyHeader>

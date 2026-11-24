@@ -25,21 +25,30 @@ performance budgets, and the browser CI matrix belong to the later tooling work.
 
 ## Workflow
 
-- **Author:** edit/create/rename/delete files, select a Simfile or quick-mode
-  contract, attach HCL modules, and record evidence in project notes. Directory
+- **Definition editor:** edit/create/rename/delete files while the runner stays
+  alongside the source. Open **Composition** below the editor to select a Simfile
+  or quick-mode contract, attach HCL modules, and record project notes. Directory
   uploads and ZIPs preserve relative paths. Choose an entry when imports are
   ambiguous. Renaming does not rewrite imports or Simfile paths.
 - **Describe and Audit:** inspect the public catalogue and artifact counters;
   filter fidelity findings and apply the shared strict acceptance rule.
-- **Baseline:** synthesize or load a request, supply a decimal seed and optional
+- **Run:** synthesize or load a request, expand **Run settings** for a decimal seed and optional
   outcome/scenario, then capture a native reproduction bundle. Payload JSON remains
   Rust-produced text; binary bodies and files remain bytes.
-- **Workbench:** explicitly start/restart a compiled revision. Provision caller
+- **HTTP session:** explicitly start/restart a compiled revision. Provision caller
   profiles, opt in to applying their credentials, send HTTP requests, inspect
   backend state and the journal, advance manual time, and step work. Repeated
-  headers remain separate. Absent bodies differ from JSON `null`.
+  headers remain separate. Absent bodies differ from JSON `null`. Authentication,
+  wire options, and session controls expand independently.
 - **Reproduction:** save/import/export named cases, replay them, or run a suite.
   ZIPs contain native bundle files; they do not represent arbitrary session state.
+
+Drag the divider, or focus it and use arrow keys, to resize the definition and
+execution panes. Narrow screens stack them vertically. Problems, Composition,
+Describe, Audit, and Reproduction open in a collapsible panel below the editor.
+Switching execution tabs preserves request inputs and results; new workspaces
+and successful imports start a fresh baseline form. Results from an earlier
+compiled revision are labelled.
 
 Compilation uses a separate Worker, debounces edits, coalesces pending builds,
 and discards stale responses. It cannot replace the running revision. Cancel

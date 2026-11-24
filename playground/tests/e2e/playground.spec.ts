@@ -11,6 +11,7 @@ test("author, audit, provision, create/read, work, checkpoint, and reproduce", a
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   await compiled(page)
+  await page.getByRole("tab", { name: "Composition", exact: true }).click()
   await page
     .getByLabel("Project notes")
     .fill("Reviewed Orders API assumptions.")
@@ -19,9 +20,12 @@ test("author, audit, provision, create/read, work, checkpoint, and reproduce", a
   await expect(
     page.getByRole("heading", { name: "Audit the contract" })
   ).toBeVisible()
-  await page.getByRole("tab", { name: "Workbench", exact: true }).click()
+  await page.getByRole("tab", { name: "HTTP session", exact: true }).click()
   await page.getByRole("button", { name: "Start service", exact: true }).click()
   await expect(page.getByText(/Running [a-f0-9]{8}/)).toBeVisible()
+  await expect(
+    page.getByRole("button", { name: "Send request", exact: true })
+  ).toBeInViewport()
   await page.getByRole("tab", { name: "Profiles & setup" }).click()
   await page.getByLabel("name", { exact: true }).fill("Browser integration")
   await page
@@ -30,8 +34,11 @@ test("author, audit, provision, create/read, work, checkpoint, and reproduce", a
   await expect(
     page.getByText("Credentials issued. Use the profile toggle")
   ).toBeVisible()
-  await expect(page.getByText(/sk_simile_/)).toHaveCount(0)
+  await expect(
+    page.locator(".execution-pane").getByText(/sk_simile_/)
+  ).toHaveCount(0)
   await page.getByRole("tab", { name: "HTTP request", exact: true }).click()
+  await page.locator("summary").filter({ hasText: "Authentication" }).click()
   await page.getByRole("button", { name: "Refresh profiles" }).click()
   await page.getByRole("switch", { name: "Use profile credentials" }).check()
   await page.getByRole("button", { name: "Send request", exact: true }).click()
@@ -57,6 +64,9 @@ test("author, audit, provision, create/read, work, checkpoint, and reproduce", a
   await page.getByRole("tab", { name: "Work & webhooks" }).click()
   await page.getByRole("button", { name: "Inspect outbox" }).click()
   await expect(page.locator(".work-card")).toHaveCount(2)
+  await page
+    .getByText("Session controls & checkpoints", { exact: true })
+    .click()
   await page.getByRole("button", { name: "Advance", exact: true }).click()
   await page.getByRole("button", { name: "Step work", exact: true }).click()
   await page.getByRole("button", { name: "Execute async", exact: true }).click()
@@ -71,25 +81,34 @@ test("author, audit, provision, create/read, work, checkpoint, and reproduce", a
     page.getByText("Checkpoint saved", { exact: true })
   ).toBeVisible()
   await page.reload()
+  await page.getByRole("tab", { name: "Composition", exact: true }).click()
   await expect(page.getByLabel("Project notes")).toHaveValue(
     "Reviewed Orders API assumptions."
   )
-  await page.getByRole("tab", { name: "Workbench", exact: true }).click()
+  await page.getByRole("tab", { name: "HTTP session", exact: true }).click()
+  await page
+    .getByText("Session controls & checkpoints", { exact: true })
+    .click()
   await page.getByRole("button", { name: "Restore saved", exact: true }).click()
   await expect(page.getByText(/Running [a-f0-9]{8}/)).toBeVisible()
   await page.getByRole("tab", { name: "Stack & journal" }).click()
   await page.getByLabel("Backend resource").selectOption("db.primary")
   await page.getByRole("button", { name: "Inspect snapshot" }).click()
-  await expect(page.locator(".output pre")).toContainText(id)
-  await page.getByRole("tab", { name: "Baseline", exact: true }).click()
+  await expect(
+    page.locator(".execution-content .output pre:visible")
+  ).toContainText(id)
+  await page.getByRole("tab", { name: "Run", exact: true }).click()
   await page.getByRole("button", { name: "Run baseline", exact: true }).click()
+  await page.getByText("Capture reproduction", { exact: true }).click()
   await expect(
     page.getByRole("button", { name: "Save reproduction" })
   ).toBeEnabled()
   await page.getByRole("button", { name: "Save reproduction" }).click()
   await page.getByRole("tab", { name: "Reproduction", exact: true }).click()
   await page.getByRole("button", { name: "Replay", exact: true }).click()
-  await expect(page.locator(".output pre")).toContainText('"matched":true')
+  await expect(page.locator(".tool-body .output pre:visible")).toContainText(
+    '"matched":true'
+  )
   await page.getByRole("button", { name: "Run suite", exact: true }).click()
   await expect(
     page.getByRole("heading", { name: "1 passed · 0 failed · 1 cases" })
@@ -100,7 +119,7 @@ test("invalid artifacts preserve the session and CLI Smithy artifacts run", asyn
   page,
 }) => {
   await compiled(page)
-  await page.getByRole("tab", { name: "Workbench", exact: true }).click()
+  await page.getByRole("tab", { name: "HTTP session", exact: true }).click()
   await page.getByRole("button", { name: "Start service", exact: true }).click()
   const running = page.getByText(/Running [a-f0-9]{8}/)
   await expect(running).toBeVisible()
@@ -123,9 +142,10 @@ test("invalid artifacts preserve the session and CLI Smithy artifacts run", asyn
   await expect(
     page.getByText("COMPILED ARTIFACT", { exact: true })
   ).toBeVisible()
-  await page.getByRole("tab", { name: "Baseline", exact: true }).click()
+  await page.getByRole("tab", { name: "Run", exact: true }).click()
   await page.getByRole("button", { name: "Synthesize request" }).click()
   await page.getByRole("button", { name: "Run baseline", exact: true }).click()
+  await page.getByText("Capture reproduction", { exact: true }).click()
   await expect(
     page.getByRole("button", { name: "Save reproduction" })
   ).toBeEnabled()
@@ -141,8 +161,9 @@ test("exports a runnable workspace and exact reproduction files", async ({
   const path = testInfo.outputPath("workspace.zip")
   await downloaded.saveAs(path)
   expect((await readFile(path)).byteLength).toBeGreaterThan(500)
-  await page.getByRole("tab", { name: "Baseline", exact: true }).click()
+  await page.getByRole("tab", { name: "Run", exact: true }).click()
   await page.getByRole("button", { name: "Run baseline", exact: true }).click()
+  await page.getByText("Capture reproduction", { exact: true }).click()
   const bundleEvent = page.waitForEvent("download")
   await page.getByRole("button", { name: "Download bundle" }).click()
   const bundle = await bundleEvent
@@ -151,23 +172,24 @@ test("exports a runnable workspace and exact reproduction files", async ({
   await page.getByRole("tab", { name: "Reproduction", exact: true }).click()
   await page.getByLabel("Import bundle or suite ZIP").setInputFiles(bundlePath)
   await page.getByRole("button", { name: "Replay", exact: true }).click()
-  await expect(page.locator(".output pre")).toContainText('"matched":true')
+  await expect(page.locator(".tool-body .output pre:visible")).toContainText(
+    '"matched":true'
+  )
 })
 
 test("compilation keeps the active revision until an explicit restart", async ({
   page,
 }) => {
   await compiled(page)
-  await page.getByRole("tab", { name: "Workbench", exact: true }).click()
+  await page.getByRole("tab", { name: "HTTP session", exact: true }).click()
   await page.getByRole("button", { name: "Start service", exact: true }).click()
   const running = await page.getByText(/Running [a-f0-9]{8}/).innerText()
-  await page.getByRole("tab", { name: "Author", exact: true }).click()
   const yaml = await readFile(resolve("src/templates/orders.yaml"), "utf8")
   await page
-    .locator(".cm-content[contenteditable=true]")
+    .locator(".source-editor .cm-content[contenteditable=true]")
     .fill(yaml.replace("title: Orders", "title: Orders revision two"))
   await expect(page.getByText("Source edits pending")).toHaveCount(0)
-  await page.getByRole("tab", { name: "Workbench", exact: true }).click()
+  await page.getByRole("tab", { name: "HTTP session", exact: true }).click()
   await expect(page.getByText("A different revision is running")).toBeVisible()
   await expect(page.getByText(/Running [a-f0-9]{8}/)).toHaveText(running)
   await page.getByRole("button", { name: "Restart with controls" }).click()
@@ -191,16 +213,17 @@ test("TypeScript starter compiles and mobile navigation stays in bounds", async 
       () => document.documentElement.scrollWidth <= window.innerWidth
     )
   ).toBe(true)
-  await page.getByRole("tab", { name: "Workbench", exact: true }).click()
+  await page.getByRole("tab", { name: "HTTP session", exact: true }).click()
   await page.getByRole("button", { name: "Start service", exact: true }).click()
   await expect(page.getByText(/Running [a-f0-9]{8}/)).toBeVisible()
   for (const name of [
-    "Author",
+    "Problems",
+    "Composition",
     "Describe",
     "Audit",
-    "Baseline",
+    "Run",
     "Reproduction",
-    "Workbench",
+    "HTTP session",
     "Profiles & setup",
     "Stack & journal",
     "Work & webhooks",
@@ -235,13 +258,14 @@ test("storage failures retain edits and the live session, then retry", async ({
     }
   })
   await compiled(page)
+  await page.getByRole("tab", { name: "Composition", exact: true }).click()
   await page
     .getByLabel("Project notes")
     .fill("Unsaved evidence survives failed storage.")
   await expect(
     page.getByText("Browser storage unavailable", { exact: true })
   ).toBeVisible()
-  await page.getByRole("tab", { name: "Workbench", exact: true }).click()
+  await page.getByRole("tab", { name: "HTTP session", exact: true }).click()
   await page.getByRole("button", { name: "Start service", exact: true }).click()
   const running = page.getByText(/Running [a-f0-9]{8}/)
   await expect(running).toBeVisible()
@@ -254,8 +278,49 @@ test("storage failures retain edits and the live session, then retry", async ({
     .click()
   await expect(page.getByRole("status")).toContainText("Project saved")
   await expect(running).toHaveText(revision)
-  await page.getByRole("tab", { name: "Author", exact: true }).click()
   await expect(page.getByLabel("Project notes")).toHaveValue(
     "Unsaved evidence survives failed storage."
   )
+})
+
+test("definition, execution, and results stay together across resizes and tools", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" })
+  await compiled(page)
+  await expect(page.locator("html")).toHaveClass(/dark/)
+  await page.getByRole("button", { name: "Toggle color theme" }).click()
+  await expect(page.locator("html")).toHaveClass(/light/)
+  const definition = page.getByRole("region", { name: "Service definition" })
+  const run = page.getByRole("button", { name: "Run baseline", exact: true })
+  await expect(definition).toBeInViewport()
+  await expect(run).toBeInViewport()
+  await run.click()
+  const response = page
+    .locator(".execution-content .output")
+    .filter({ hasText: "Response body · seed" })
+  await expect(response).toContainText('"id"')
+  await expect(response).toBeInViewport()
+  await expect(definition.locator(".cm-content")).toBeInViewport()
+  await page.getByRole("tab", { name: "Audit", exact: true }).click()
+  await expect(definition.locator(".cm-content")).toBeInViewport()
+  await expect(run).toBeInViewport()
+  await page.getByRole("button", { name: "Collapse tools" }).click()
+  await page.getByRole("tab", { name: "HTTP session", exact: true }).click()
+  await page.getByRole("tab", { name: "Run", exact: true }).click()
+  await expect(response).toContainText('"id"')
+  const separator = page.getByRole("separator", {
+    name: "Resize definition and execution",
+  })
+  await separator.focus()
+  await page.keyboard.press("ArrowLeft")
+  await expect(run).toBeInViewport()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(definition).toBeInViewport()
+  await expect(run).toBeInViewport()
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth
+    )
+  ).toBe(true)
 })

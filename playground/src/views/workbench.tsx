@@ -15,13 +15,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "../components/ui/tabs"
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group"
 import { Alert, AlertTitle, AlertDescription } from "../components/ui/alert"
 import { Editor } from "../components/editor"
-import {
-  EmptyResult,
-  PanelHeader,
-  Choice,
-  TextField,
-  Output,
-} from "../components/shared"
+import { EmptyResult, Choice, TextField, Output } from "../components/shared"
 import type { Playground, State } from "../model/controller"
 import type {
   HttpExchange,
@@ -59,61 +53,15 @@ export function Workbench({
   const [tab, setTab] = useState("request")
   return (
     <>
-      <PanelHeader
-        eyebrow="In-process HTTP · no listening socket"
-        title="Stateful workbench"
-        description="Start a compiled revision explicitly. Controls apply on restart and reset the running state."
-      >
-        <Badge variant="secondary">
-          {state.session
-            ? `Running ${state.active?.revision.slice(0, 8)}`
-            : "Stopped"}
-        </Badge>
-      </PanelHeader>
-      <FieldGroup className="session-controls">
-        <Field>
-          <FieldLabel>Clock mode</FieldLabel>
-          <ToggleGroup
-            value={[options.clockMode ?? "manual"]}
-            onValueChange={(values) => {
-              if (values[0])
-                setOptions({
-                  ...options,
-                  clockMode: values[0] as "manual" | "realtime",
-                })
-            }}
-          >
-            <ToggleGroupItem value="manual">Manual</ToggleGroupItem>
-            <ToggleGroupItem value="realtime">Realtime</ToggleGroupItem>
-          </ToggleGroup>
-        </Field>
-        <Choice
-          label="Session scenario"
-          value={options.scenario ?? ""}
-          onChange={(scenario) =>
-            setOptions({ ...options, scenario: scenario || undefined })
-          }
-          options={[
-            { value: "", label: "Default" },
-            ...(state.candidate?.catalogue.scenarios ?? []).map((value) => ({
-              value: value.name,
-              label: value.name,
-            })),
-          ]}
-        />
-        <Choice
-          label="Fault profile"
-          value={options.faultProfile ?? ""}
-          onChange={(faultProfile) =>
-            setOptions({ ...options, faultProfile: faultProfile || undefined })
-          }
-          options={[
-            { value: "", label: "None" },
-            ...(state.candidate?.catalogue.faultProfiles ?? []).map(
-              (value) => ({ value: value.name, label: value.name })
-            ),
-          ]}
-        />
+      <div className="session-heading">
+        <div>
+          <h2>HTTP session</h2>
+          <p>
+            {state.session
+              ? `Running ${state.active?.revision.slice(0, 8)}`
+              : "Start your service to send HTTP requests."}
+          </p>
+        </div>
         <Button
           disabled={state.busy || !state.candidate}
           onClick={() => void model.act(() => model.start(options))}
@@ -121,94 +69,153 @@ export function Workbench({
           <PlayIcon data-icon="inline-start" />
           {state.session ? "Restart with controls" : "Start service"}
         </Button>
-      </FieldGroup>
-      <div className="service-toolbar">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">
-            {state.session?.clockMode ?? "manual"} ·{" "}
-            {state.session?.clockMilliseconds ?? "0"} ms
-          </Badge>
-          <Input
-            aria-label="Advance milliseconds"
-            className="w-28"
-            value={advance}
-            onChange={(e) => setAdvance(e.target.value)}
-          />
-          <Button
-            variant="outline"
-            disabled={
-              !state.session ||
-              state.busy ||
-              state.session.clockMode !== "manual"
-            }
-            onClick={() =>
-              void model.act(() =>
-                model.call("advanceClock", { milliseconds: advance })
-              )
-            }
-          >
-            <ClockIcon data-icon="inline-start" />
-            Advance
-          </Button>
-          <Button
-            variant="outline"
-            disabled={!state.session || state.busy}
-            onClick={() => void model.act(() => model.call("resetState", {}))}
-          >
-            <RotateCcwIcon data-icon="inline-start" />
-            Reset state
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">Checkpoint {state.checkpointState}</Badge>
-          <Button
-            variant="outline"
-            disabled={!state.session || state.busy}
-            onClick={() => void model.act(() => model.saveCheckpoint())}
-          >
-            <SaveIcon data-icon="inline-start" />
-            Save checkpoint
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={state.busy}
-            onClick={() => void model.act(() => model.restoreSaved())}
-          >
-            Restore saved
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={!state.session || state.busy}
-            onClick={() =>
-              void model.act(async () =>
-                download(
-                  "service.checkpoint.json",
-                  (await model.call("exportCheckpoint", {})).bytes
-                )
-              )
-            }
-          >
-            Export
-          </Button>
-          <label className="file-picker small">
-            Import checkpoint
-            <input
-              type="file"
-              aria-label="Import checkpoint"
-              accept=".json"
-              disabled={!state.session || state.busy}
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file)
-                  void model.act(async () =>
-                    model.restoreBytes(new Uint8Array(await file.arrayBuffer()))
-                  )
-                event.target.value = ""
-              }}
-            />
-          </label>
-        </div>
       </div>
+      <details className="compact-details">
+        <summary>Session controls & checkpoints</summary>
+        <FieldGroup className="session-controls">
+          <Field>
+            <FieldLabel>Clock mode</FieldLabel>
+            <ToggleGroup
+              value={[options.clockMode ?? "manual"]}
+              onValueChange={(values) => {
+                if (values[0])
+                  setOptions({
+                    ...options,
+                    clockMode: values[0] as "manual" | "realtime",
+                  })
+              }}
+            >
+              <ToggleGroupItem value="manual">Manual</ToggleGroupItem>
+              <ToggleGroupItem value="realtime">Realtime</ToggleGroupItem>
+            </ToggleGroup>
+          </Field>
+          <Choice
+            label="Session scenario"
+            value={options.scenario ?? ""}
+            onChange={(scenario) =>
+              setOptions({ ...options, scenario: scenario || undefined })
+            }
+            options={[
+              { value: "", label: "Default" },
+              ...(state.candidate?.catalogue.scenarios ?? []).map((value) => ({
+                value: value.name,
+                label: value.name,
+              })),
+            ]}
+          />
+          <Choice
+            label="Fault profile"
+            value={options.faultProfile ?? ""}
+            onChange={(faultProfile) =>
+              setOptions({
+                ...options,
+                faultProfile: faultProfile || undefined,
+              })
+            }
+            options={[
+              { value: "", label: "None" },
+              ...(state.candidate?.catalogue.faultProfiles ?? []).map(
+                (value) => ({ value: value.name, label: value.name })
+              ),
+            ]}
+          />
+        </FieldGroup>
+        <div className="service-toolbar">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">
+              {state.session?.clockMode ?? "manual"} ·{" "}
+              {state.session?.clockMilliseconds ?? "0"} ms
+            </Badge>
+            <Input
+              aria-label="Advance milliseconds"
+              className="w-28"
+              value={advance}
+              onChange={(e) => setAdvance(e.target.value)}
+            />
+            <Button
+              variant="outline"
+              disabled={
+                !state.session ||
+                state.busy ||
+                state.session.clockMode !== "manual"
+              }
+              onClick={() =>
+                void model.act(() =>
+                  model.call("advanceClock", { milliseconds: advance })
+                )
+              }
+            >
+              <ClockIcon data-icon="inline-start" />
+              Advance
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!state.session || state.busy}
+              onClick={() => void model.act(() => model.call("resetState", {}))}
+            >
+              <RotateCcwIcon data-icon="inline-start" />
+              Reset state
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">
+              Checkpoint {state.checkpointState}
+            </Badge>
+            <Button
+              variant="outline"
+              disabled={!state.session || state.busy}
+              onClick={() => void model.act(() => model.saveCheckpoint())}
+            >
+              <SaveIcon data-icon="inline-start" />
+              Save checkpoint
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={state.busy}
+              onClick={() => void model.act(() => model.restoreSaved())}
+            >
+              Restore saved
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={!state.session || state.busy}
+              onClick={() =>
+                void model.act(async () =>
+                  download(
+                    "service.checkpoint.json",
+                    (await model.call("exportCheckpoint", {})).bytes
+                  )
+                )
+              }
+            >
+              Export
+            </Button>
+            <label className="file-picker small">
+              Import checkpoint
+              <input
+                type="file"
+                aria-label="Import checkpoint"
+                accept=".json"
+                disabled={!state.session || state.busy}
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file)
+                    void model.act(async () =>
+                      model.restoreBytes(
+                        new Uint8Array(await file.arrayBuffer())
+                      )
+                    )
+                  event.target.value = ""
+                }}
+              />
+            </label>
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Restore preserves resources, profiles, and outbox. Replay caches and
+          fault progress restart; old work handles become invalid.
+        </p>
+      </details>
       {state.active && state.candidate?.revision !== state.active.revision && (
         <Alert>
           <AlertTitle>A different revision is running</AlertTitle>
@@ -218,10 +225,6 @@ export function Workbench({
           </AlertDescription>
         </Alert>
       )}
-      <p className="text-sm text-muted-foreground">
-        Restore preserves resources, profiles, and outbox. Replay caches and
-        fault progress restart; old work handles become invalid.
-      </p>
       {state.session && state.active ? (
         <Tabs
           value={tab}
@@ -335,29 +338,148 @@ function RequestPanel({ model, state }: { model: Playground; state: State }) {
   return (
     <div className="split-panels">
       <section>
-        <FieldGroup>
-          <Choice
-            label="HTTP route"
-            value={routeKey}
-            onChange={(key) => {
-              const route = artifact.routes.find((item) => item.key === key)!
-              setRouteKey(key)
-              setUri(route.path)
-              setMethod(route.method)
-              setMode(
-                ["GET", "HEAD"].includes(route.method) ? "absent" : "text"
-              )
-              setParams({})
-            }}
-            options={artifact.routes.map((route) => ({
-              value: route.key,
-              label: route.key,
-            }))}
-          />
-          <div className="grid grid-cols-[6rem_1fr] gap-3">
-            <TextField label="Method" value={method} onChange={setMethod} />
-            <TextField label="Request URI" value={uri} onChange={setUri} />
+        <FieldGroup className="http-form">
+          <div className="run-command">
+            <Choice
+              label="HTTP route"
+              value={routeKey}
+              onChange={(key) => {
+                const route = artifact.routes.find((item) => item.key === key)!
+                setRouteKey(key)
+                setUri(route.path)
+                setMethod(route.method)
+                setMode(
+                  ["GET", "HEAD"].includes(route.method) ? "absent" : "text"
+                )
+                setParams({})
+              }}
+              options={artifact.routes.map((route) => ({
+                value: route.key,
+                label: route.key,
+              }))}
+            />
+            <Button
+              disabled={state.busy || (mode === "file" && !binary)}
+              onClick={() =>
+                void model.act(async () => {
+                  const start = performance.now()
+                  const result = await model.call("handleRequest", request())
+                  setElapsed(performance.now() - start)
+                  setResponse(result)
+                })
+              }
+            >
+              <SendIcon data-icon="inline-start" />
+              Send request
+            </Button>
           </div>
+          <details className="compact-details">
+            <summary>Method, URI & headers</summary>
+            <FieldGroup>
+              <div className="grid grid-cols-[6rem_1fr] gap-3">
+                <TextField label="Method" value={method} onChange={setMethod} />
+                <TextField label="Request URI" value={uri} onChange={setUri} />
+              </div>
+              <Field>
+                <FieldLabel>Repeated headers</FieldLabel>
+                {headers.map(([name, value], index) => (
+                  <div className="flex gap-2" key={index}>
+                    <Input
+                      aria-label={`Header ${index + 1} name`}
+                      value={name}
+                      onChange={(e) =>
+                        setHeaders(
+                          headers.map((row, i) =>
+                            i === index ? [e.target.value, row[1]] : row
+                          )
+                        )
+                      }
+                    />
+                    <Input
+                      aria-label={`Header ${index + 1} value`}
+                      value={value}
+                      onChange={(e) =>
+                        setHeaders(
+                          headers.map((row, i) =>
+                            i === index ? [row[0], e.target.value] : row
+                          )
+                        )
+                      }
+                    />
+                    <Button
+                      variant="ghost"
+                      aria-label={`Remove header ${index + 1}`}
+                      onClick={() =>
+                        setHeaders(headers.filter((_, i) => i !== index))
+                      }
+                    >
+                      ×
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  onClick={() => setHeaders([...headers, ["", ""]])}
+                >
+                  Add header
+                </Button>
+              </Field>
+              <TextField
+                label="Response seed"
+                value={seed}
+                onChange={setSeed}
+              />
+            </FieldGroup>
+          </details>
+          <details className="compact-details">
+            <summary>
+              Authentication{" "}
+              <span>
+                {useCredentials && profile ? profile : "No credentials"}
+              </span>
+            </summary>
+            <FieldGroup>
+              <Choice
+                label="Credential profile"
+                value={profile}
+                onChange={setProfile}
+                options={[
+                  { value: "", label: "Choose a profile" },
+                  ...profiles.map((value) => ({
+                    value: value.name,
+                    label: `${value.name} · ${value.principal}`,
+                  })),
+                ]}
+              />
+              <Field orientation="horizontal">
+                <Switch
+                  id="use-credentials"
+                  checked={useCredentials}
+                  onCheckedChange={setUseCredentials}
+                />
+                <FieldLabel htmlFor="use-credentials">
+                  Use profile credentials
+                </FieldLabel>
+                <Button
+                  variant="ghost"
+                  disabled={state.busy}
+                  onClick={() =>
+                    void model.act(async () => {
+                      const values = await model.call("listProfiles", {})
+                      setProfiles(values)
+                      setProfile(
+                        values.find((value) => value.current)?.name ??
+                          values[0]?.name ??
+                          ""
+                      )
+                    })
+                  }
+                >
+                  Refresh profiles
+                </Button>
+              </Field>
+            </FieldGroup>
+          </details>
           {route?.parameters.map((parameter) => (
             <TextField
               key={`${parameter.location}:${parameter.name}`}
@@ -373,51 +495,31 @@ function RequestPanel({ model, state }: { model: Playground; state: State }) {
             />
           ))}
           <Field>
-            <FieldLabel>Repeated headers</FieldLabel>
-            {headers.map(([name, value], index) => (
-              <div className="flex gap-2" key={index}>
-                <Input
-                  aria-label={`Header ${index + 1} name`}
-                  value={name}
-                  onChange={(e) =>
-                    setHeaders(
-                      headers.map((row, i) =>
-                        i === index ? [e.target.value, row[1]] : row
-                      )
-                    )
-                  }
-                />
-                <Input
-                  aria-label={`Header ${index + 1} value`}
-                  value={value}
-                  onChange={(e) =>
-                    setHeaders(
-                      headers.map((row, i) =>
-                        i === index ? [row[0], e.target.value] : row
-                      )
-                    )
-                  }
-                />
-                <Button
-                  variant="ghost"
-                  aria-label={`Remove header ${index + 1}`}
-                  onClick={() =>
-                    setHeaders(headers.filter((_, i) => i !== index))
-                  }
-                >
-                  ×
-                </Button>
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              onClick={() => setHeaders([...headers, ["", ""]])}
-            >
-              Add header
-            </Button>
-          </Field>
-          <Field>
-            <FieldLabel>Request body</FieldLabel>
+            <div className="request-heading">
+              <FieldLabel>Request body</FieldLabel>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={state.busy || !route}
+                onClick={() =>
+                  void model.act(async () => {
+                    const generated = await model.call("synthesizeRequest", {
+                      revision: artifact.revision,
+                      options: {
+                        selector: { key: route!.key },
+                        seed: seed || undefined,
+                      },
+                    })
+                    setMode(generated.body ? "text" : "absent")
+                    setBody(generated.body ? decode(generated.body) : "")
+                    if (generated.contentType)
+                      setHeaders([["Content-Type", generated.contentType]])
+                  })
+                }
+              >
+                Synthesize body
+              </Button>
+            </div>
             <ToggleGroup
               value={[mode]}
               onValueChange={(values) => {
@@ -447,85 +549,8 @@ function RequestPanel({ model, state }: { model: Playground; state: State }) {
               }}
             />
           )}
-          <TextField label="Response seed" value={seed} onChange={setSeed} />
-          <Choice
-            label="Credential profile"
-            value={profile}
-            onChange={setProfile}
-            options={[
-              { value: "", label: "Choose a profile" },
-              ...profiles.map((value) => ({
-                value: value.name,
-                label: `${value.name} · ${value.principal}`,
-              })),
-            ]}
-          />
-          <Field orientation="horizontal">
-            <Switch
-              id="use-credentials"
-              checked={useCredentials}
-              onCheckedChange={setUseCredentials}
-            />
-            <FieldLabel htmlFor="use-credentials">
-              Use profile credentials
-            </FieldLabel>
-            <Button
-              variant="ghost"
-              disabled={state.busy}
-              onClick={() =>
-                void model.act(async () => {
-                  const values = await model.call("listProfiles", {})
-                  setProfiles(values)
-                  setProfile(
-                    values.find((value) => value.current)?.name ??
-                      values[0]?.name ??
-                      ""
-                  )
-                })
-              }
-            >
-              Refresh profiles
-            </Button>
-          </Field>
         </FieldGroup>
-        <div className="flex flex-wrap gap-2 py-4">
-          <Button
-            disabled={state.busy || (mode === "file" && !binary)}
-            onClick={() =>
-              void model.act(async () => {
-                const start = performance.now()
-                const result = await model.call("handleRequest", request())
-                setElapsed(performance.now() - start)
-                setResponse(result)
-              })
-            }
-          >
-            <SendIcon data-icon="inline-start" />
-            Send request
-          </Button>
-          <Button
-            variant="outline"
-            disabled={state.busy || !route}
-            onClick={() =>
-              void model.act(async () => {
-                const generated = await model.call("synthesizeRequest", {
-                  revision: artifact.revision,
-                  options: {
-                    selector: { key: route!.key },
-                    seed: seed || undefined,
-                  },
-                })
-                setMode(generated.body ? "text" : "absent")
-                setBody(generated.body ? decode(generated.body) : "")
-                if (generated.contentType)
-                  setHeaders([["Content-Type", generated.contentType]])
-              })
-            }
-          >
-            Synthesize body
-          </Button>
-        </div>
-        <details>
+        <details className="compact-details">
           <summary>Native curl handoff</summary>
           <p>
             After native registration and required setup; attach the credentials
@@ -556,14 +581,17 @@ function RequestPanel({ model, state }: { model: Playground; state: State }) {
                 </AlertDescription>
               </Alert>
             )}
-            <Output title="Response headers">
-              {response.headers
-                .map(([name, value]) => `${name}: ${wireText(value)}`)
-                .join("\n")}
-            </Output>
             <Output title="Response body · exact text / hex">
               {wireText(response.body) || "(empty)"}
             </Output>
+            <details className="compact-details">
+              <summary>Response headers</summary>
+              <Output title="Response headers">
+                {response.headers
+                  .map(([name, value]) => `${name}: ${wireText(value)}`)
+                  .join("\n")}
+              </Output>
+            </details>
             <Button
               variant="outline"
               onClick={() => download("response.bin", response.body)}

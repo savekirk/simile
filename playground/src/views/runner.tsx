@@ -32,6 +32,7 @@ export function Runner({
     state.project.files["requests/create-order.json"] ?? "{}"
   )
   const [result, setResult] = useState<ReportView>(),
+    [resultRevision, setResultRevision] = useState<string>(),
     [name, setName] = useState("create-order")
   const artifact = state.candidate
   if (!artifact) return <NoArtifact />
@@ -43,12 +44,7 @@ export function Runner({
   )
   return (
     <>
-      <PanelHeader
-        eyebrow="Fresh runtime · deterministic seed"
-        title="Baseline runner"
-        description="Run an operation independently of the stateful session. Request parameters remain explicit inputs."
-      />
-      <FieldGroup className="runner-controls">
+      <FieldGroup className="run-command">
         <Choice
           label="Baseline operation"
           value={op?.key ?? ""}
@@ -58,43 +54,72 @@ export function Runner({
             label: `${route.key} · ${route.operationId ?? ""}`,
           }))}
         />
-        <TextField
-          label="Baseline seed"
-          value={seed}
-          onChange={setSeed}
-          hint="Unsigned 64-bit decimal. Leave empty to generate."
-        />
-        <Choice
-          label="Outcome override"
-          value={outcome}
-          onChange={setOutcome}
-          options={[
-            { value: "", label: "Default" },
-            ...(description?.outcomes ?? []).map((item) => ({
-              value: item.name,
-              label: item.name,
-            })),
-          ]}
-        />
-        <Choice
-          label="Scenario override"
-          value={scenario}
-          onChange={setScenario}
-          options={[
-            { value: "", label: "Default" },
-            ...artifact.catalogue.scenarios.map((item) => ({
-              value: item.name,
-              label: item.name,
-            })),
-          ]}
-        />
+        <Button
+          disabled={state.busy || !op}
+          onClick={() =>
+            void model.act(async () => {
+              const response = await model.candidateCall("runOperation", {
+                selector: { key: op.key },
+                seed: seed || undefined,
+                requestDocJson: request,
+                outcome: outcome || undefined,
+                scenario: scenario || undefined,
+                bundleName: name || undefined,
+              })
+              setResult(response)
+              setResultRevision(artifact.revision)
+              if (response.seed) setSeed(response.seed)
+            })
+          }
+        >
+          <PlayIcon data-icon="inline-start" />
+          Run baseline
+        </Button>
       </FieldGroup>
+      <details className="compact-details">
+        <summary>
+          Run settings <span>Seed {seed || "auto"}</span>
+        </summary>
+        <FieldGroup className="runner-controls">
+          <TextField
+            label="Baseline seed"
+            value={seed}
+            onChange={setSeed}
+            hint="Unsigned 64-bit decimal. Leave empty to generate."
+          />
+          <Choice
+            label="Outcome override"
+            value={outcome}
+            onChange={setOutcome}
+            options={[
+              { value: "", label: "Default" },
+              ...(description?.outcomes ?? []).map((item) => ({
+                value: item.name,
+                label: item.name,
+              })),
+            ]}
+          />
+          <Choice
+            label="Scenario override"
+            value={scenario}
+            onChange={setScenario}
+            options={[
+              { value: "", label: "Default" },
+              ...artifact.catalogue.scenarios.map((item) => ({
+                value: item.name,
+                label: item.name,
+              })),
+            ]}
+          />
+        </FieldGroup>
+      </details>
       <div className="split-panels">
         <section>
-          <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+          <div className="request-heading">
             <h2>Request document</h2>
             <Button
-              variant="outline"
+              size="sm"
+              variant="ghost"
               disabled={state.busy || !op}
               onClick={() =>
                 void model.act(async () => {
@@ -136,70 +161,62 @@ export function Runner({
               onChange={setRequest}
             />
           </div>
-          <FieldGroup className="mt-4">
-            <TextField
-              label="Reproduction case name"
-              value={name}
-              onChange={setName}
-            />
-          </FieldGroup>
-          <div className="flex flex-wrap gap-2 py-4">
-            <Button
-              disabled={state.busy || !op}
-              onClick={() =>
-                void model.act(async () => {
-                  const response = await model.candidateCall("runOperation", {
-                    selector: { key: op.key },
-                    seed: seed || undefined,
-                    requestDocJson: request,
-                    outcome: outcome || undefined,
-                    scenario: scenario || undefined,
-                    bundleName: name || undefined,
+          <details className="compact-details capture-details">
+            <summary>Capture reproduction</summary>
+            <FieldGroup className="mt-4">
+              <TextField
+                label="Reproduction case name"
+                value={name}
+                onChange={setName}
+              />
+            </FieldGroup>
+            <div className="flex flex-wrap gap-2 py-4">
+              <Button
+                variant="outline"
+                disabled={!result?.bundle}
+                onClick={() =>
+                  void model.act(async () => {
+                    if (result?.bundle) model.addBundle(result.bundle)
                   })
-                  setResult(response)
-                  if (response.seed) setSeed(response.seed)
-                })
-              }
-            >
-              <PlayIcon data-icon="inline-start" />
-              Run baseline
-            </Button>
-            <Button
-              variant="outline"
-              disabled={!result?.bundle}
-              onClick={() =>
-                void model.act(async () => {
-                  if (result?.bundle) model.addBundle(result.bundle)
-                })
-              }
-            >
-              Save reproduction
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={!result?.bundle}
-              onClick={() =>
-                result?.bundle &&
-                download(
-                  `${result.bundle.name}.zip`,
-                  bundleArchive([result.bundle])
-                )
-              }
-            >
-              <DownloadIcon data-icon="inline-start" />
-              Download bundle
-            </Button>
-          </div>
+                }
+              >
+                Save reproduction
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={!result?.bundle}
+                onClick={() =>
+                  result?.bundle &&
+                  download(
+                    `${result.bundle.name}.zip`,
+                    bundleArchive([result.bundle])
+                  )
+                }
+              >
+                <DownloadIcon data-icon="inline-start" />
+                Download bundle
+              </Button>
+            </div>
+          </details>
         </section>
         <section>
           {result ? (
             <>
+              {resultRevision !== artifact.revision && (
+                <p className="quiet-message">
+                  Result from revision {resultRevision?.slice(0, 8)}. Run again
+                  to use the current definition.
+                </p>
+              )}
               <Output title={`Response body · seed ${result.seed}`}>
                 {result.bodyJson ?? "(no JSON body)"}
               </Output>
-              <Output title="Validated request, outcome, provenance, and planned webhooks">
-                {result.reportJson}
-              </Output>
+              <details className="compact-details">
+                <summary>Execution report</summary>
+                <Output title="Validated request, outcome, provenance, and planned webhooks">
+                  {result.reportJson}
+                </Output>
+              </details>
             </>
           ) : (
             <EmptyResult>

@@ -10,6 +10,8 @@ import {
   SunIcon,
   ChevronDownIcon,
   BracesIcon,
+  ChevronUpIcon,
+  XIcon,
 } from "lucide-react"
 import { Button } from "./components/ui/button"
 import { Badge } from "./components/ui/badge"
@@ -34,7 +36,12 @@ import {
   SheetDescription,
 } from "./components/ui/sheet"
 import { TextField, Method } from "./components/shared"
-import { Author } from "./views/author"
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "./components/ui/resizable"
+import { Author, Composition, Diagnostics } from "./views/author"
 import { Inspect, Audit } from "./views/inspect"
 import { Runner, Reproduction } from "./views/runner"
 import { Workbench } from "./views/workbench"
@@ -56,14 +63,12 @@ import { Engine } from "./worker/client"
 import { useTheme } from "./components/theme-provider"
 const model = new Playground()
 void model.initialize()
-const views = [
-  "Author",
-  "Describe",
-  "Audit",
-  "Baseline",
-  "Workbench",
-  "Reproduction",
-]
+const tools = ["Problems", "Composition", "Describe", "Audit", "Reproduction"]
+const narrowScreen = window.matchMedia("(max-width: 900px)")
+const subscribeScreen = (notify: () => void) => {
+  narrowScreen.addEventListener("change", notify)
+  return () => narrowScreen.removeEventListener("change", notify)
+}
 async function droppedFiles(
   transfer: DataTransfer
 ): Promise<{ path: string; file: File }[]> {
@@ -98,8 +103,15 @@ async function droppedFiles(
 }
 export default function App() {
   const state = useSyncExternalStore(model.subscribe, model.snapshot),
-    { theme, setTheme } = useTheme()
-  const [view, setView] = useState("Author"),
+    { setTheme } = useTheme()
+  const narrow = useSyncExternalStore(
+    subscribeScreen,
+    () => narrowScreen.matches
+  )
+  const [tool, setTool] = useState("Problems"),
+    [toolOpen, setToolOpen] = useState(false),
+    [runView, setRunView] = useState("Run"),
+    [runnerVersion, setRunnerVersion] = useState(0),
     [selected, setSelected] = useState("orders.yaml"),
     [filename, setFilename] = useState(""),
     [operation, setOperation] = useState("POST /orders"),
@@ -117,7 +129,9 @@ export default function App() {
       await model.importArtifact(
         new Uint8Array(await items[0].file.arrayBuffer())
       )
-      setView("Describe")
+      setRunnerVersion((version) => version + 1)
+      setTool("Describe")
+      setToolOpen(true)
       return
     }
     const files: Record<string, string> = {}
@@ -155,10 +169,11 @@ export default function App() {
           : undefined,
     }
     model.edit(project)
+    setRunnerVersion((version) => version + 1)
     setSelected(
       project.configPath ?? project.contractEntry ?? Object.keys(files)[0]
     )
-    setView("Author")
+    setToolOpen(false)
   }
   const tree = (
     <>
@@ -183,7 +198,7 @@ export default function App() {
                   aria-current={file === path ? "page" : undefined}
                   onClick={() => {
                     setSelected(path)
-                    setView("Author")
+                    setToolOpen(false)
                     setFilename(path)
                   }}
                 >
@@ -267,7 +282,7 @@ export default function App() {
             key={route.key}
             onClick={() => {
               setOperation(route.key)
-              setView("Baseline")
+              setRunView("Run")
             }}
           >
             <div className="flex items-center gap-2">
@@ -335,7 +350,7 @@ export default function App() {
             <Sheet>
               <SheetTrigger
                 className="mobile-project"
-                render={<Button variant="outline" />}
+                render={<Button variant="ghost" size="sm" />}
               >
                 <FolderOpenIcon data-icon="inline-start" />
                 Project
@@ -351,9 +366,13 @@ export default function App() {
               </SheetContent>
             </Sheet>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="outline" />}>
+              <DropdownMenuTrigger
+                aria-label="New workspace"
+                render={<Button variant="ghost" size="sm" />}
+              >
                 <PlusIcon data-icon="inline-start" />
-                New workspace
+                <span className="workspace-label">New workspace</span>
+                <span className="workspace-label-short">New</span>
                 <ChevronDownIcon data-icon="inline-end" />
               </DropdownMenuTrigger>
               <DropdownMenuContent>
@@ -367,7 +386,8 @@ export default function App() {
                       key={kind}
                       onClick={() => {
                         model.edit(starter(kind))
-                        setView("Author")
+                        setRunnerVersion((version) => version + 1)
+                        setToolOpen(false)
                       }}
                     >
                       {label}
@@ -377,7 +397,9 @@ export default function App() {
               </DropdownMenuContent>
             </DropdownMenu>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="outline" />}>
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" size="sm" />}
+              >
                 <UploadIcon data-icon="inline-start" />
                 Import
               </DropdownMenuTrigger>
@@ -394,7 +416,9 @@ export default function App() {
             </DropdownMenu>
             <DropdownMenu>
               <DropdownMenuTrigger
-                render={<Button variant="outline" disabled={!artifact} />}
+                render={
+                  <Button variant="ghost" size="sm" disabled={!artifact} />
+                }
               >
                 <DownloadIcon data-icon="inline-start" />
                 Export
@@ -443,9 +467,16 @@ export default function App() {
               variant="ghost"
               size="icon"
               aria-label="Toggle color theme"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              onClick={() =>
+                setTheme(
+                  document.documentElement.classList.contains("dark")
+                    ? "light"
+                    : "dark"
+                )
+              }
             >
-              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+              <SunIcon className="hidden dark:block" />
+              <MoonIcon className="dark:hidden" />
             </Button>
             <input
               ref={upload}
@@ -495,42 +526,6 @@ export default function App() {
         <div className="workspace-shell">
           <aside className="project-sidebar">{tree}</aside>
           <main className="main-panel">
-            <div className="revision-bar">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={state.diagnostic ? "destructive" : "secondary"}>
-                  {state.compiling
-                    ? "Compiling…"
-                    : state.diagnostic
-                      ? "Compile error"
-                      : artifact
-                        ? `Compiled · ${artifact.operations} ops · ${artifact.revision.slice(0, 8)}`
-                        : "Not compiled"}
-                </Badge>
-                {state.mode === "workspace" &&
-                  state.compiledRevision !== state.editRevision &&
-                  artifact && (
-                    <Badge variant="outline">Source edits pending</Badge>
-                  )}
-                {artifact && (
-                  <Badge
-                    variant={
-                      artifact.audit.errors || artifact.audit.warnings
-                        ? "outline"
-                        : "secondary"
-                    }
-                  >
-                    Strict audit:{" "}
-                    {artifact.audit.errors || artifact.audit.warnings
-                      ? "findings"
-                      : "pass"}
-                  </Badge>
-                )}
-              </div>
-              <span role="status">
-                Project {state.projectState}
-                {state.busy ? " · Working…" : ""}
-              </span>
-            </div>
             {state.error && (
               <Alert variant="destructive" className="app-alert">
                 <AlertTitle>Action could not complete</AlertTitle>
@@ -553,53 +548,165 @@ export default function App() {
                 </AlertDescription>
               </Alert>
             )}
-            <Tabs
-              value={view}
-              onValueChange={(value) => setView(String(value))}
-              className="main-tabs"
+            <ResizablePanelGroup
+              orientation={narrow ? "vertical" : "horizontal"}
+              className="studio-panels"
             >
-              <div className="view-navigation">
-                <TabsList variant="line" aria-label="Playground views">
-                  {views.map((name) => (
-                    <TabsTrigger key={name} value={name}>
-                      {name}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
-              <TabsContent
-                value="Author"
-                className="view-content author-content"
+              <ResizablePanel
+                id="definition"
+                defaultSize={narrow ? "45%" : "58%"}
+                minSize={narrow ? "25%" : "32%"}
               >
-                <Author
-                  model={model}
-                  state={state}
-                  file={file}
-                  onSelectFile={setSelected}
-                />
-              </TabsContent>
-              <TabsContent value="Describe" className="view-content">
-                <Inspect state={state} />
-              </TabsContent>
-              <TabsContent value="Audit" className="view-content">
-                <Audit state={state} />
-              </TabsContent>
-              <TabsContent value="Baseline" className="view-content">
-                <Runner
-                  model={model}
-                  state={state}
-                  operation={operation}
-                  onOperation={setOperation}
-                />
-              </TabsContent>
-              <TabsContent value="Workbench" className="view-content">
-                <Workbench model={model} state={state} />
-              </TabsContent>
-              <TabsContent value="Reproduction" className="view-content">
-                <Reproduction model={model} state={state} />
-              </TabsContent>
-            </Tabs>
+                <div className="definition-pane">
+                  <Author
+                    model={model}
+                    state={state}
+                    file={file}
+                    onSelectFile={setSelected}
+                  />
+                  <Tabs
+                    value={tool}
+                    onValueChange={(value) => {
+                      setTool(String(value))
+                      setToolOpen(true)
+                    }}
+                    className={`tool-dock ${toolOpen ? "is-open" : ""}`}
+                  >
+                    <div className="dock-toolbar">
+                      <div className="dock-tabs">
+                        <TabsList variant="line" aria-label="Workspace tools">
+                          {tools.map((name) => (
+                            <TabsTrigger
+                              key={name}
+                              value={name}
+                              onClick={() => setToolOpen(true)}
+                            >
+                              {name}
+                              {name === "Problems" && state.diagnostic && (
+                                <span
+                                  className="problem-dot"
+                                  aria-label="Compilation error"
+                                />
+                              )}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={
+                          toolOpen ? "Collapse tools" : "Expand tools"
+                        }
+                        onClick={() => setToolOpen(!toolOpen)}
+                      >
+                        {toolOpen ? <XIcon /> : <ChevronUpIcon />}
+                      </Button>
+                    </div>
+                    <div className="tool-body" hidden={!toolOpen}>
+                      <TabsContent value="Problems" keepMounted>
+                        <Diagnostics state={state} onSelectFile={setSelected} />
+                      </TabsContent>
+                      <TabsContent value="Composition" keepMounted>
+                        <Composition model={model} state={state} />
+                      </TabsContent>
+                      <TabsContent value="Describe" keepMounted>
+                        <Inspect state={state} />
+                      </TabsContent>
+                      <TabsContent value="Audit" keepMounted>
+                        <Audit state={state} />
+                      </TabsContent>
+                      <TabsContent value="Reproduction" keepMounted>
+                        <Reproduction model={model} state={state} />
+                      </TabsContent>
+                    </div>
+                  </Tabs>
+                </div>
+              </ResizablePanel>
+              <ResizableHandle aria-label="Resize definition and execution" />
+              <ResizablePanel
+                id="execution"
+                defaultSize={narrow ? "55%" : "42%"}
+                minSize={narrow ? "30%" : "30%"}
+              >
+                <Tabs
+                  value={runView}
+                  onValueChange={(value) => setRunView(String(value))}
+                  className="execution-pane"
+                >
+                  <div className="execution-tabs">
+                    <TabsList variant="line" aria-label="Execution mode">
+                      <TabsTrigger value="Run">Run</TabsTrigger>
+                      <TabsTrigger value="HTTP">HTTP session</TabsTrigger>
+                    </TabsList>
+                    <span className="execution-caption">
+                      {runView === "Run"
+                        ? "Fresh state each run"
+                        : state.session
+                          ? "Service running"
+                          : "Stateful requests"}
+                    </span>
+                  </div>
+                  <TabsContent
+                    value="Run"
+                    keepMounted
+                    className="execution-content"
+                  >
+                    {state.projectState !== "loading" && (
+                      <Runner
+                        key={runnerVersion}
+                        model={model}
+                        state={state}
+                        operation={operation}
+                        onOperation={setOperation}
+                      />
+                    )}
+                  </TabsContent>
+                  <TabsContent
+                    value="HTTP"
+                    keepMounted
+                    className="execution-content"
+                  >
+                    <Workbench model={model} state={state} />
+                  </TabsContent>
+                </Tabs>
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </main>
+        </div>
+        <div className="revision-bar">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={state.diagnostic ? "destructive" : "secondary"}>
+              {state.compiling
+                ? "Compiling…"
+                : state.diagnostic
+                  ? "Compile error"
+                  : artifact
+                    ? `Compiled · ${artifact.operations} ops · ${artifact.revision.slice(0, 8)}`
+                    : "Not compiled"}
+            </Badge>
+            {state.mode === "workspace" &&
+              state.compiledRevision !== state.editRevision &&
+              artifact && <Badge variant="outline">Source edits pending</Badge>}
+            {artifact && (
+              <Badge
+                variant={
+                  artifact.audit.errors || artifact.audit.warnings
+                    ? "outline"
+                    : "secondary"
+                }
+              >
+                Strict audit:{" "}
+                {artifact.audit.errors || artifact.audit.warnings
+                  ? "findings"
+                  : "pass"}
+              </Badge>
+            )}
+          </div>
+          <span role="status">
+            Project {state.projectState}
+            {state.busy ? " · Working…" : ""}
+          </span>
         </div>
       </div>
     </TooltipProvider>

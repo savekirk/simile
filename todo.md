@@ -63,11 +63,11 @@ The first three implementation PRs are merged; the playground builds on `origin/
 
 - [x] Start from merged `origin/wasm` (`afe36cb`) and verify the fork destination.
 - [x] Rehearse an upstream update in an isolated checkout, repeated against the
-  final fetched upstream `fa95fe0`. The first portability
+  latest fetched upstream `4fce2d9`. The first portability
   commit conflicts in `Cargo.toml`, `Cargo.lock`, and `simile-service/src/lib.rs`
   with upstream's newer console/persistence changes. Abort the rehearsal and
   preserve the requested fork base; no upstream changes are published.
-- [x] Build six focused views with shadcn 4.23.0, React, TypeScript, and CodeMirror.
+- [x] Build the playground with shadcn 4.23.0, React, TypeScript, and CodeMirror.
 - [x] Separate compiler and runtime Workers, coalesce recompiles, reject stale
   responses, and require explicit runtime revision replacement.
 - [x] Support file/folder/ZIP imports, artifact mode, runnable workspace exports,
@@ -88,6 +88,14 @@ The first three implementation PRs are merged; the playground builds on `origin/
   all six jobs pass, including Chromium and native Linux, macOS, and Windows.
 - [x] Keep Workbench tabs inside narrow screens. The browser regression now checks
   all six views and every Workbench panel at 390 px width.
+
+- [x] Keep definition and execution on one screen, with resizable panes, file
+  tabs, a collapsible tools panel, and compact Run/HTTP controls. Seven Chromium
+  tests pass, including simultaneous editor/result visibility, keyboard resizing,
+  theme switching, mobile navigation, and the complete native handoff.
+- [x] Compare rendered desktop, mobile, light/dark, and HTTP layouts against the
+  supplied playground references. See `playground/design-qa.md`. All five Rust
+  checks and frontend typecheck, lint, build, and 13 unit tests pass again.
 
 ## Decisions and tradeoffs
 
@@ -138,6 +146,14 @@ The first three implementation PRs are merged; the playground builds on `origin/
   OpenAPI. Explicit database effects accompany async effects so create/read works.
 - Saved source files and notes survive an incompatible cached artifact. Storage
   retries reopen failed database connections; only committed saves show as saved.
+- Keep the editor and runner visible while inspection tools open below the
+  editor. On narrow screens the panes stack; each scrolls independently. This
+  prioritizes editing and execution over displaying every advanced control.
+- Keep exact payload text in results; retained baseline results identify an older
+  revision after recompilation. Tabs preserve forms, while workspace replacement
+  resets the baseline form without replacing the active HTTP service.
+- Added the current shadcn Resizable component using `react-resizable-panels`
+  rather than custom drag/keyboard handling.
 - No user decisions are currently blocking work.
 
 ## What was achieved
@@ -153,6 +169,8 @@ The first three implementation PRs are merged; the playground builds on `origin/
 
 - Phase 4: the playground implements authoring, inspection, audit, baseline runs,
   stateful HTTP, profiles, work, reproduction suites, and explicit persistence.
+  Definition and execution now share a resizable workspace inspired by the
+  supplied playground screenshots.
 
 ## Exit gate
 
@@ -170,10 +188,11 @@ The first three implementation PRs are merged; the playground builds on `origin/
   retry run through the exported API. Expired and replaced work handles reject
   without changing state; renewed handles still complete or retry exactly once.
 
-- Phase 4: passed locally. Six production-browser tests verify authoring, audit,
+- Phase 4: passed locally. Seven production-browser tests verify authoring, audit,
   profile setup, authenticated create/read, time/work, checkpoint reload, baseline
   capture, replay/conformance, imports, revision isolation, and storage recovery.
   Thirteen frontend unit tests cover persistence races, incompatible cached
   artifacts, paths, and lossless values. Native tests verify credential attachment
   and read-only inspection; exported workspaces and bundles run with the CLI.
-  The PR is published against `wasm`; all six fork CI jobs pass.
+  The PR targets `wasm`. The previous revision passed all six fork CI jobs;
+  refreshed CI will verify the layout revision.
