@@ -44,7 +44,7 @@ export function Choice({
   label: string
   value: string
   onChange: (value: string) => void
-  options: { value: string; label: string }[]
+  options: { value: string; label: string; disabled?: boolean }[]
   disabled?: boolean
 }) {
   const id = label.replaceAll(" ", "-")
@@ -58,7 +58,11 @@ export function Choice({
         disabled={disabled}
       >
         {options.map((option) => (
-          <NativeSelectOption key={option.value} value={option.value}>
+          <NativeSelectOption
+            key={option.value}
+            value={option.value}
+            disabled={option.disabled}
+          >
             {option.label}
           </NativeSelectOption>
         ))}

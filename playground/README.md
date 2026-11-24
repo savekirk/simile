@@ -44,6 +44,10 @@ performance budgets, and the browser CI matrix belong to the later tooling work.
   Rust-produced text; binary bodies and files remain bytes. Each operation keeps
   its own request draft, so switching from POST to GET does not carry a body over.
   The selected fixture stays visible and is marked modified after request edits.
+  Body-bearing fixtures are disabled when the compiled operation declares no body.
+  A pasted body shows an inline explanation and a **Remove request body** action;
+  removal preserves the other fields verbatim. In Orders, use create-order.json
+  with POST /orders, and an empty request document (`{}`) with GET /orders.
 - **HTTP session:** explicitly start/restart a compiled revision. Provision caller
   profiles, opt in to applying their credentials, send HTTP requests, inspect
   backend state and the journal, advance manual time, and step work. Repeated

@@ -23,6 +23,9 @@ async function main() {
   const artifact = await client.call("compileWorkspace", { files, contractEntry: "lifecycle.yaml", modules: ["lifecycle.hcl"] });
   check(artifact.bytes instanceof Uint8Array && artifact.bytes.length > 0, "artifact must be transferable bytes");
   check(!(artifact.audit instanceof Map) && Array.isArray(artifact.routes), "metadata maps must be objects");
+  check(artifact.routes.find(route => route.key === "POST /nullable").acceptsBody === true, "optional body declaration missing from route metadata");
+  check(artifact.routes.find(route => route.key === "POST /orders").acceptsBody === false, "body support must follow the contract, not the HTTP method");
+  check(artifact.routes.find(route => route.key === "GET /limits").acceptsBody === false, "body-free route metadata incorrect");
   check(typeof artifact.catalogue.webhooks.reorderWindowMilliseconds === "string", "64-bit metadata must be decimal");
   const revision = artifact.revision;
   const baseline = { revision, options: { selector: { id: "limits" } } };

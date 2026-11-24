@@ -109,6 +109,12 @@ The first three implementation PRs are merged; the playground builds on `origin/
   verified documentation section links. Browser tests add and run new OpenAPI and
   TypeScript operations. Sixteen unit tests and ten Chromium tests pass, along
   with typecheck, lint, build, all five Rust checks, and native export handoff.
+- [x] Prevent loading a body-bearing fixture into a body-free operation. Expose
+  the compiled body's presence in route metadata, explain mismatches inline, and
+  offer lossless removal of top-level body fields. Both themes reproduce and
+  recover from the reported GET /orders mismatch. Eighteen unit tests, ten browser
+  tests, 149 Worker assertions, portable dependencies, native handoff, and all five
+  repository checks pass.
 
 ## Decisions and tradeoffs
 
@@ -174,6 +180,9 @@ The first three implementation PRs are merged; the playground builds on `origin/
 - New operations are authored in the contract. The Add operation action opens
   examples and the contract, keeping the source as the single definition instead
   of maintaining a separate form-generated representation.
+- Fixture filtering checks whether a body is declared by the compiled contract,
+  not the HTTP method or filename. Full schema validation remains in Rust. Body
+  removal is explicit and edits syntax ranges so other payload values stay exact.
 - No user decisions are currently blocking work.
 
 ## What was achieved
@@ -213,8 +222,9 @@ The first three implementation PRs are merged; the playground builds on `origin/
   profile setup, authenticated create/read, time/work, checkpoint reload, baseline
   capture, replay/conformance, imports, revision isolation, storage recovery,
   new operation authoring, per-operation drafts, formatting, visible errors, and
-  light/dark contrast. Sixteen frontend unit tests cover persistence races,
-  incompatible cached artifacts, paths, lossless values, and formatting.
+  light/dark contrast. Eighteen frontend unit tests cover persistence races,
+  incompatible cached artifacts, paths, lossless values, formatting, and request
+  body detection/removal. The updated Worker harness passes 149 assertions.
   Native tests verify credential attachment
   and read-only inspection; exported workspaces and bundles run with the CLI.
   The PR targets `wasm`. The previous revision passed all six fork CI jobs;

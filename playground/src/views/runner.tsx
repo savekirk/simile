@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { PlayIcon, WandSparklesIcon, DownloadIcon } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { FieldGroup } from "../components/ui/field"
+import { Alert, AlertTitle, AlertDescription } from "../components/ui/alert"
 import { Editor } from "../components/editor"
 import {
   EmptyResult,
@@ -14,6 +15,7 @@ import {
 import type { Playground, State } from "../model/controller"
 import type { ReportView, Methods } from "../worker/client"
 import { bundleArchive, download, importBundles } from "../model/archive"
+import { hasRequestBody, withoutRequestBody } from "../model/request-document"
 export function Runner({
   model,
   state,
@@ -84,6 +86,7 @@ export function Runner({
   const description = artifact.catalogue.operations.find(
     (item) => item.key === op?.key
   )
+  const bodyMismatch = op.acceptsBody === false && hasRequestBody(request)
   return (
     <>
       <FieldGroup className="run-command">
@@ -97,7 +100,7 @@ export function Runner({
           }))}
         />
         <Button
-          disabled={state.busy || !op || !draft}
+          disabled={state.busy || !op || !draft || bodyMismatch}
           onClick={() =>
             void model.act(async () => {
               const response = await model.candidateCall("runOperation", {
@@ -199,8 +202,15 @@ export function Runner({
                   )
                   .map((path) => ({
                     value: path,
+                    disabled:
+                      op.acceptsBody === false &&
+                      hasRequestBody(state.project.files[path]),
                     label:
                       path +
+                      (op.acceptsBody === false &&
+                      hasRequestBody(state.project.files[path])
+                        ? ` (contains a body; unavailable for ${op.key})`
+                        : "") +
                       (draft?.fixture === path &&
                       draft.text !== state.project.files[path]
                         ? " (modified)"
@@ -209,6 +219,40 @@ export function Runner({
               ]}
             />
           </FieldGroup>
+          <p className="quiet-message mt-2">
+            {op.acceptsBody
+              ? `${op.key} declares a request body. Choose a fixture that matches its schema.`
+              : `${op.key} declares no request body. Omit the body field; an empty request document ({}) is valid.`}
+          </p>
+          {bodyMismatch && (
+            <Alert className="mt-3" variant="destructive">
+              <AlertTitle>
+                Request body does not match this operation
+              </AlertTitle>
+              <AlertDescription className="flex flex-col items-start gap-2">
+                <div>
+                  The contract for {op.key} declares no request body, but this
+                  document contains one. Remove it, select an operation that
+                  accepts it, or add requestBody to the contract.
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setRequest(withoutRequestBody(request), "")
+                    if (
+                      state.error?.includes(
+                        `operation \`${op.key}\` does not declare a request body`
+                      )
+                    )
+                      model.clearError()
+                  }}
+                >
+                  Remove request body
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="editor-panel mt-3">
             <Editor
               path="baseline-request.json"

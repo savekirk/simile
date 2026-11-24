@@ -12,7 +12,7 @@ export interface Workspace {
 }
 export interface Diagnostic { code: string; message: string; file?: string }
 export interface Parameter { name: string; location: "path" | "query" | "header" | "cookie"; required: boolean; style: string; explode: boolean; allowReserved: boolean }
-export interface Route { key: string; method: string; path: string; operationId: string | null; parameters: Parameter[]; effects: number; webhooks: number }
+export interface Route { key: string; method: string; path: string; operationId: string | null; acceptsBody: boolean; parameters: Parameter[]; effects: number; webhooks: number }
 export interface NamedDescription { name: string; description?: string }
 export interface OperationDescription {
   key: string; operationId?: string; description?: string; behaviorSource: string; secured: boolean;

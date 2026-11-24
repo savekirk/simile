@@ -27,6 +27,9 @@ at 1440×1000 in both themes, plus the author/HTTP layout at 390×844. Run
 `light-editor.png`, `dark-editor.png`, `light-error.png`, `dark-error.png`, and
 `mobile-author-http.png` under `playground/test-results/usability-*`.
 These captures were reviewed after the cursor, contrast, and toolbar changes.
+The follow-up fixture correction adds `light-fixture-mismatch.png` and
+`dark-fixture-mismatch.png`, reviewed with the explanation and recovery action
+beside the request. Their text and button contrast are also asserted at 4.5:1.
 
 ## Findings resolved
 
@@ -47,6 +50,10 @@ These captures were reviewed after the cursor, contrast, and toolbar changes.
 - POST request bodies carried into GET operations, and fixture selection reverted
   to the placeholder. Operation drafts are separate, and fixture selection remains
   visible with a modified indicator after edits.
+- A create-order fixture could still be loaded deliberately for GET /orders.
+  The picker now disables body-bearing fixtures for body-free contracts, explains
+  the declaration beside the request, and blocks a manually supplied body before
+  running. Remove request body preserves other fields and restores a runnable GET.
 - Authoring and formatting were hard to discover. Add operation opens examples
   and the contract; each supported editor has Format. Guide links to verified
   documentation sections and opens the baseline and HTTP tools.
@@ -81,6 +88,6 @@ reviews do not claim a full accessibility audit or cross-browser certification.
 
 - [x] Recheck desktop, mobile, light/dark, and HTTP layouts after visual fixes.
 - [x] Preserve authenticated create/read, checkpoints, async work, and reproduction.
-- [x] Pass typecheck, lint, build, 16 unit tests, and ten browser tests.
+- [x] Pass typecheck, lint, build, 18 unit tests, and ten browser tests.
 - [x] Run the downloaded workspace and reproduction bundle with the native CLI.
 - [x] Pass all five Rust repository checks again after the usability changes.

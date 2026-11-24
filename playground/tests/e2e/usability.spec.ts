@@ -64,6 +64,48 @@ for (const theme of ["light", "dark"] as const) {
     const fixture = page.getByLabel("Load request fixture")
     await fixture.selectOption("requests/create-order.json")
     await expect(fixture).toHaveValue("requests/create-order.json")
+    await page.getByLabel("Baseline operation").selectOption("GET /orders")
+    await expect(
+      fixture.locator('option[value="requests/create-order.json"]')
+    ).toBeDisabled()
+    await expect(
+      fixture.locator('option[value="requests/create-order.json"]')
+    ).toContainText("contains a body; unavailable for GET /orders")
+    await request(page).fill('{"headers":{"X-Trace":"keep this"},"body":null}')
+    await expect(
+      page.getByText("Request body does not match this operation", {
+        exact: true,
+      })
+    ).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Run baseline", exact: true })
+    ).toBeDisabled()
+    for (const element of await page
+      .locator(
+        '.execution-content [data-slot="alert-title"], .execution-content [data-slot="alert-description"], .execution-content [data-slot="alert"] button'
+      )
+      .all())
+      expect(
+        await contrast(element),
+        "fixture mismatch contrast"
+      ).toBeGreaterThanOrEqual(4.5)
+    await page.screenshot({
+      path: testInfo.outputPath(`${theme}-fixture-mismatch.png`),
+      animations: "disabled",
+    })
+    await page
+      .getByRole("button", { name: "Remove request body", exact: true })
+      .click()
+    await expect(request(page)).toContainText('"X-Trace":"keep this"')
+    await expect(request(page)).not.toContainText('"body"')
+    await page
+      .getByRole("button", { name: "Run baseline", exact: true })
+      .click()
+    await expect(
+      page
+        .locator(".execution-content .output")
+        .filter({ hasText: "Response body · seed" })
+    ).toBeVisible()
     await page.getByLabel("Baseline operation").selectOption("GET /orders/{id}")
     await expect(request(page)).not.toContainText('"body"')
     await page
@@ -100,7 +142,7 @@ for (const theme of ["light", "dark"] as const) {
         .filter({ hasText: "Response body · seed" })
     ).toContainText('"product":"browser"')
     await page.getByLabel("Baseline operation").selectOption("GET /orders/{id}")
-    await request(page).fill('{"body":{}}')
+    await request(page).fill('{"headers":')
     await page
       .getByRole("button", { name: "Run baseline", exact: true })
       .click()
@@ -109,9 +151,7 @@ for (const theme of ["light", "dark"] as const) {
     ).toHaveAttribute("aria-selected", "true")
     await expect(page.locator(".tool-dock")).toHaveClass(/is-open/)
     await expect(
-      page
-        .getByRole("alert")
-        .filter({ hasText: "does not declare a request body" })
+      page.getByRole("alert").filter({ hasText: "Action could not complete" })
     ).toBeVisible()
     for (const element of await page
       .locator(

@@ -91,6 +91,7 @@ impl ArtifactHandle {
         }
         let routes = self.artifact.operations().map(|operation| serde_json::json!({
             "key": operation.key(), "method": operation.method(), "path": operation.path(), "operationId": operation.operation_id(),
+            "acceptsBody": operation.request_body().is_some(),
             "effects": self.artifact.effects_for(operation.key()).count(),
             "webhooks": self.artifact.effects_for(operation.key()).map(|effect| effect.webhooks().len()).sum::<usize>(),
             "parameters": operation.parameters().map(|parameter| serde_json::json!({

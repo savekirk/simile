@@ -108,6 +108,13 @@ export function Guide({
           body field. Baselines start with fresh state; use an HTTP session to
           create a record and read it back.
         </p>
+        <p>
+          Fixtures that contain a body are unavailable when the selected
+          operation declares none. In the Orders starter, create-order.json
+          belongs with POST /orders; GET /orders can use an empty request
+          document. A body in the editor does not declare a body in the
+          contract.
+        </p>
         <div className="guide-actions">
           <Button size="sm" variant="outline" onClick={onRun}>
             <PlayIcon data-icon="inline-start" />
