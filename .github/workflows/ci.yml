@@ -26,6 +26,8 @@ jobs:
         run: bash scripts/check-portable.sh
       - name: Test in Chrome
         run: bash scripts/test-browser.sh
+      - name: Test TypeScript Worker API
+        run: bash scripts/test-worker.sh
 
   test:
     name: test (${{ matrix.os }})

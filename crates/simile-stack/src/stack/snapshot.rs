@@ -1,4 +1,3 @@
-#[cfg(feature = "persistence")]
 use std::collections::VecDeque;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -6,28 +5,20 @@ use serde::{Deserialize, Serialize};
 use simile_spec::ResourceKind;
 
 use super::supervisor::ReplayRecord;
-#[cfg(feature = "persistence")]
 use crate::JournalEntry;
 use crate::cache::CacheEngine;
-#[cfg(feature = "persistence")]
 use crate::cache::CacheEntry;
 use crate::db::DbEngine;
-#[cfg(feature = "persistence")]
 use crate::db::StoredDocument;
 use crate::event_bus::BusEngine;
-#[cfg(feature = "persistence")]
 use crate::event_bus::BusState;
 use crate::http::HttpEngine;
-#[cfg(feature = "persistence")]
 use crate::http::HttpState;
 use crate::mail::MailEngine;
-#[cfg(feature = "persistence")]
 use crate::mail::MailMessage;
 use crate::object_store::ObjectEngine;
-#[cfg(feature = "persistence")]
 use crate::object_store::StoredObject;
 use crate::queue::QueueEngine;
-#[cfg(feature = "persistence")]
 use crate::queue::StoredMessage;
 use crate::scheduler::SchedulerEngine;
 use crate::{ClockSnapshot, Journal, LogicalTime, ResourceAddress, ScheduledTask};
@@ -63,7 +54,6 @@ pub struct StackSnapshot {
 
 /// Storage-neutral records that let durable stores update independent pieces
 /// of a Stack without coupling resource engines to a database implementation.
-#[cfg(feature = "persistence")]
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StackRecords {
     pub(crate) resources: BTreeMap<ResourceAddress, ResourceState>,
@@ -73,7 +63,6 @@ pub(crate) struct StackRecords {
     pub(crate) clocks: StackClocks,
 }
 
-#[cfg(feature = "persistence")]
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "state", rename_all = "snake_case")]
 pub(crate) enum ResourceState {
@@ -87,7 +76,6 @@ pub(crate) enum ResourceState {
     Http(Option<HttpState>),
 }
 
-#[cfg(feature = "persistence")]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StackCounters {
@@ -99,7 +87,6 @@ pub(crate) struct StackCounters {
     pub(crate) scheduler_task: u64,
 }
 
-#[cfg(feature = "persistence")]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StackClocks {
@@ -111,6 +98,32 @@ impl StackSnapshot {
     #[must_use]
     pub const fn clock(&self) -> ClockSnapshot {
         self.clock
+    }
+
+    #[must_use]
+    pub const fn initial_clock(&self) -> ClockSnapshot {
+        self.initial_clock
+    }
+
+    /// Reject undeclared engine state, duplicate journal/replay records, and
+    /// counters that could reuse committed command or event identities.
+    pub fn validate(&self) -> Result<(), String> {
+        let rebuilt = Self::from_records(self.to_records())?;
+        if rebuilt != *self {
+            return Err("snapshot records are inconsistent".to_owned());
+        }
+        if self
+            .journal
+            .entries()
+            .windows(2)
+            .any(|pair| pair[0].sequence >= pair[1].sequence)
+            || self.journal.entries().iter().any(|entry| {
+                entry.sequence > self.next_event || entry.command_id.0 > self.next_command
+            })
+        {
+            return Err("snapshot journal counters are inconsistent".to_owned());
+        }
+        Ok(())
     }
 
     /// Return a JSON view of one resource's engine state.
@@ -145,7 +158,6 @@ impl StackSnapshot {
         }
     }
 
-    #[cfg(feature = "persistence")]
     pub(crate) fn to_records(&self) -> StackRecords {
         let resources = self
             .resources
@@ -214,7 +226,6 @@ impl StackSnapshot {
         }
     }
 
-    #[cfg(feature = "persistence")]
     pub(crate) fn from_records(records: StackRecords) -> Result<Self, String> {
         let mut replays = records.replays.into_values().collect::<Vec<_>>();
         replays.sort_by_key(|record| record.receipt.command_id);
@@ -294,7 +305,6 @@ impl StackSnapshot {
     }
 }
 
-#[cfg(feature = "persistence")]
 pub(crate) fn replay_storage_key(record: &ReplayRecord) -> String {
     let resource = record.resource.to_string();
     format!("{:016x}:{resource}{}", resource.len(), record.key)

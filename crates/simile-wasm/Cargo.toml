@@ -13,6 +13,13 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen.workspace = true
+serde_bytes.workspace = true
+js-sys.workspace = true
+rand.workspace = true
+simile-spec.workspace = true
 simile-http.workspace = true
 simile-core.workspace = true
 simile-compiler.workspace = true
@@ -27,8 +34,6 @@ wasm-bindgen.workspace = true
 getrandom = { version = "=0.3.4", features = ["wasm_js"] }
 
 [dev-dependencies]
-simile-spec.workspace = true
-serde_json.workspace = true
 wasm-bindgen-test.workspace = true
 
 [lints]

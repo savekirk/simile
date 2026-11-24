@@ -52,6 +52,9 @@ percent-encoding = "2.3.2"
 semver = "1.0.28"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
+serde-wasm-bindgen = "=0.6.5"
+serde_bytes = "=0.11.19"
+js-sys = "=0.3.77"
 serde_norway = "0.9.42"
 sha2 = "0.10.9"
 simile-artifact = { version = "=0.4.0", path = "crates/simile-artifact" }

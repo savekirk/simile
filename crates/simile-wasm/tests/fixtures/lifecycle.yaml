@@ -1,0 +1,43 @@
+openapi: 3.1.0
+info: { title: Browser lifecycle, version: 1.0.0 }
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties: { id: { type: string, pattern: '^ord_[a-z]{12}$' } }
+  /nullable:
+    post:
+      operationId: nullable
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: [object, 'null'], additionalProperties: true }
+      responses:
+        '204': { description: Accepted }
+  /limits:
+    get:
+      operationId: limits
+      responses:
+        '200':
+          description: Exact values
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [nested]
+                properties:
+                  nested:
+                    type: object
+                    required: [high, low]
+                    properties:
+                      high: { type: integer, const: 18446744073709551615 }
+                      low: { type: integer, const: -9223372036854775808 }

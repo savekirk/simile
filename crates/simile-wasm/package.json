@@ -1,0 +1,11 @@
+{
+  "name": "@simile/browser",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node tests/worker-browser.mjs"
+  },
+  "devDependencies": { "typescript": "5.8.3" }
+}
