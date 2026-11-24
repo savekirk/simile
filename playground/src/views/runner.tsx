@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { PlayIcon, WandSparklesIcon, DownloadIcon } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { FieldGroup } from "../components/ui/field"
@@ -28,17 +28,59 @@ export function Runner({
   const [seed, setSeed] = useState("7"),
     [outcome, setOutcome] = useState(""),
     [scenario, setScenario] = useState("")
-  const [request, setRequest] = useState(
-    state.project.files["requests/create-order.json"] ?? "{}"
-  )
+  const artifact = state.candidate
+  const op =
+    artifact?.routes.find((route) => route.key === operation) ??
+    artifact?.routes[0]
+  const [drafts, setDrafts] = useState<
+    Record<string, { text: string; fixture: string }>
+  >((): Record<string, { text: string; fixture: string }> => {
+    const fixture = "requests/create-order.json"
+    return state.project.files[fixture]
+      ? { "POST /orders": { text: state.project.files[fixture], fixture } }
+      : {}
+  })
   const [result, setResult] = useState<ReportView>(),
     [resultRevision, setResultRevision] = useState<string>(),
+    [resultOperation, setResultOperation] = useState<string>(),
     [name, setName] = useState("create-order")
-  const artifact = state.candidate
+  const draft = op ? drafts[op.key] : undefined
+  const request = draft?.text ?? ""
+  const setRequest = (text: string, fixture = draft?.fixture ?? "") => {
+    if (op)
+      setDrafts((current) => ({ ...current, [op.key]: { text, fixture } }))
+  }
+  const key = op?.key
+  useEffect(() => {
+    if (!key || draft || !artifact) return
+    let current = true
+    void model
+      .candidateCall("synthesizeRequest", { selector: { key }, seed: "7" })
+      .then((generated) => {
+        if (current)
+          setDrafts((drafts) =>
+            drafts[key]
+              ? drafts
+              : {
+                  ...drafts,
+                  [key]: { text: generated.requestDocJson, fixture: "" },
+                }
+          )
+      })
+      .catch((error) => {
+        if (current) model.reportError(error)
+      })
+    return () => {
+      current = false
+    }
+  }, [model, key, draft, artifact])
   if (!artifact) return <NoArtifact />
-  const op =
-    artifact.routes.find((route) => route.key === operation) ??
-    artifact.routes[0]
+  if (!op)
+    return (
+      <EmptyResult>
+        Add an operation to your contract to run it here.
+      </EmptyResult>
+    )
   const description = artifact.catalogue.operations.find(
     (item) => item.key === op?.key
   )
@@ -55,7 +97,7 @@ export function Runner({
           }))}
         />
         <Button
-          disabled={state.busy || !op}
+          disabled={state.busy || !op || !draft}
           onClick={() =>
             void model.act(async () => {
               const response = await model.candidateCall("runOperation", {
@@ -68,6 +110,7 @@ export function Runner({
               })
               setResult(response)
               setResultRevision(artifact.revision)
+              setResultOperation(op.key)
               if (response.seed) setSeed(response.seed)
             })
           }
@@ -127,7 +170,7 @@ export function Runner({
                     "synthesizeRequest",
                     { selector: { key: op.key }, seed: seed || undefined }
                   )
-                  setRequest(generated.requestDocJson)
+                  setRequest(generated.requestDocJson, "")
                   setSeed(generated.seed)
                 })
               }
@@ -139,9 +182,13 @@ export function Runner({
           <FieldGroup>
             <Choice
               label="Load request fixture"
-              value=""
+              value={
+                draft?.fixture && draft.fixture in state.project.files
+                  ? draft.fixture
+                  : ""
+              }
               onChange={(path) => {
-                if (path) setRequest(state.project.files[path])
+                if (path) setRequest(state.project.files[path], path)
               }}
               options={[
                 { value: "", label: "Choose a workspace request" },
@@ -150,7 +197,15 @@ export function Runner({
                     (path) =>
                       path.startsWith("requests/") && path.endsWith(".json")
                   )
-                  .map((path) => ({ value: path, label: path })),
+                  .map((path) => ({
+                    value: path,
+                    label:
+                      path +
+                      (draft?.fixture === path &&
+                      draft.text !== state.project.files[path]
+                        ? " (modified)"
+                        : ""),
+                  })),
               ]}
             />
           </FieldGroup>
@@ -158,7 +213,8 @@ export function Runner({
             <Editor
               path="baseline-request.json"
               value={request}
-              onChange={setRequest}
+              onChange={(text) => setRequest(text)}
+              onError={(error) => model.reportError(error)}
             />
           </div>
           <details className="compact-details capture-details">
@@ -200,7 +256,7 @@ export function Runner({
           </details>
         </section>
         <section>
-          {result ? (
+          {result && resultOperation === op?.key ? (
             <>
               {resultRevision !== artifact.revision && (
                 <p className="quiet-message">

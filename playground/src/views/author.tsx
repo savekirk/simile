@@ -6,7 +6,7 @@ import { Alert, AlertTitle, AlertDescription } from "../components/ui/alert"
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field"
 import { Textarea } from "../components/ui/textarea"
 import { Separator } from "../components/ui/separator"
-import { HammerIcon, SquareIcon, FileCodeIcon } from "lucide-react"
+import { HammerIcon, SquareIcon, FileCodeIcon, PlusIcon } from "lucide-react"
 import type { Playground, State } from "../model/controller"
 type AuthorProps = {
   model: Playground
@@ -14,7 +14,13 @@ type AuthorProps = {
   file: string
   onSelectFile: (path: string) => void
 }
-export function Author({ model, state, file, onSelectFile }: AuthorProps) {
+export function Author({
+  model,
+  state,
+  file,
+  onSelectFile,
+  onAddOperation,
+}: AuthorProps & { onAddOperation: () => void }) {
   const project = state.project
   return (
     <section className="source-pane" aria-label="Service definition">
@@ -24,6 +30,10 @@ export function Author({ model, state, file, onSelectFile }: AuthorProps) {
         </span>
         {state.mode === "workspace" && (
           <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" onClick={onAddOperation}>
+              <PlusIcon data-icon="inline-start" />
+              Add operation
+            </Button>
             {state.compiling && (
               <Button
                 variant="ghost"
@@ -64,7 +74,9 @@ export function Author({ model, state, file, onSelectFile }: AuthorProps) {
           <div className="source-editor">
             {file in project.files ? (
               <Editor
+                key={file}
                 path={file}
+                onError={(error) => model.reportError(error)}
                 value={project.files[file]}
                 onChange={(text) =>
                   model.edit({
@@ -100,31 +112,61 @@ export function Author({ model, state, file, onSelectFile }: AuthorProps) {
   )
 }
 export function Diagnostics({
+  model,
   state,
   onSelectFile,
-}: Pick<AuthorProps, "state" | "onSelectFile">) {
-  return state.diagnostic ? (
-    <Alert variant="destructive">
-      <AlertTitle>Compilation diagnostic</AlertTitle>
-      <AlertDescription className="whitespace-pre-wrap">
-        {state.diagnostic}
-        {Object.keys(state.project.files)
-          .filter((path) => state.diagnostic?.includes(path))
-          .map((path) => (
-            <Button
-              key={path}
-              variant="link"
-              onClick={() => onSelectFile(path)}
-            >
-              Open {path}
+}: Omit<AuthorProps, "file">) {
+  return (
+    <div className="diagnostics">
+      {state.error && (
+        <Alert variant="destructive">
+          <AlertTitle>Action could not complete</AlertTitle>
+          <AlertDescription>
+            {state.error}
+            <Button variant="ghost" onClick={() => model.clearError()}>
+              Dismiss
             </Button>
-          ))}
-      </AlertDescription>
-    </Alert>
-  ) : (
-    <p className="quiet-message">
-      {state.compiling ? "Compiling your service…" : "No compilation problems."}
-    </p>
+          </AlertDescription>
+        </Alert>
+      )}
+      {state.storageError && (
+        <Alert variant="destructive">
+          <AlertTitle>Browser storage unavailable</AlertTitle>
+          <AlertDescription>
+            {state.storageError} Edits and the live session remain usable.
+            <Button variant="outline" onClick={() => model.retrySave()}>
+              Retry project save
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      {state.diagnostic && (
+        <Alert variant="destructive">
+          <AlertTitle>Compilation diagnostic</AlertTitle>
+          <AlertDescription className="whitespace-pre-wrap">
+            {state.diagnostic}
+            {Object.keys(state.project.files)
+              .filter((path) => state.diagnostic?.includes(path))
+              .map((path) => (
+                <Button
+                  key={path}
+                  variant="link"
+                  onClick={() => onSelectFile(path)}
+                >
+                  Open {path}
+                </Button>
+              ))}
+          </AlertDescription>
+        </Alert>
+      )}
+      {!state.error && !state.storageError && !state.diagnostic && (
+        <p className="quiet-message">
+          {state.compiling
+            ? "Compiling your service…"
+            : "No problems to report."}
+        </p>
+      )}
+    </div>
   )
 }
 export function Composition({

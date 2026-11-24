@@ -21,6 +21,13 @@ compares native-pixel 1100×330 crops of the toolbar, explorer, tabs, and editor
 The source viewport/density is unknown; full-view scaling is not used to judge
 font sizes. The screenshots show different applications and execution states.
 
+The usability regression suite captures the final editor and expanded error panel
+at 1440×1000 in both themes, plus the author/HTTP layout at 390×844. Run
+`CHROMIUM_PATH=/usr/bin/chromium pnpm --dir playground test:e2e` to recreate
+`light-editor.png`, `dark-editor.png`, `light-error.png`, `dark-error.png`, and
+`mobile-author-http.png` under `playground/test-results/usability-*`.
+These captures were reviewed after the cursor, contrast, and toolbar changes.
+
 ## Findings resolved
 
 - HTTP Send initially sat below the visible request form. Moved it beside the
@@ -30,29 +37,50 @@ font sizes. The screenshots show different applications and execution states.
   `mobile.png` shows both panes and the primary run action within the viewport.
 - The theme button initially required two clicks from system dark mode. It now
   switches the rendered theme on the first click; browser coverage verifies it.
+- The dark editor cursor blended into its background. A drawn 2 px caret now uses
+  explicit light/dark colors. Both screenshots show the caret against source text.
+- Light secondary text and input borders lacked contrast. Stronger semantic
+  colors, 450-weight text, and normal browser font smoothing improve readability.
+- Action errors could remain outside the visible workflow. Errors now select and
+  expand Problems below the source, including repeated errors after dismissal or
+  collapse. The editor and runner remain on screen.
+- POST request bodies carried into GET operations, and fixture selection reverted
+  to the placeholder. Operation drafts are separate, and fixture selection remains
+  visible with a modified indicator after edits.
+- Authoring and formatting were hard to discover. Add operation opens examples
+  and the contract; each supported editor has Format. Guide links to verified
+  documentation sections and opens the baseline and HTTP tools.
 
 Post-fix full-view and focused comparisons show no remaining actionable issues.
 
 ## Review surfaces
 
 - Typography: existing Geist UI text and 13 px monospace source remain readable;
-  compact secondary labels and code line heights suit the editor layout.
+  compact secondary labels and code line heights suit the editor layout. Browser
+  assertions require at least 4.5:1 contrast for visible sampled editor/syntax text,
+  secondary labels, tabs, select text, and error text in both themes.
 - Layout: aligned toolbar edges, narrow explorer, uninterrupted editor, and
   adjacent request/result surfaces follow the reference hierarchy. Tools remain
   collapsible; small screens use vertical panes and internal scrolling.
 - Colors: semantic neutral light/dark surfaces, restrained borders, and syntax
-  colors preserve contrast. The reference's blue palette is intentionally unused.
+  colors preserve contrast. Caret and select-border assertions require at least
+  3:1 contrast. The reference's blue palette is intentionally unused.
 - Images/icons: no product imagery is required. Existing Lucide icons remain
   consistent; other playground logos and preview content are intentionally absent.
 - Copy: labels describe Simile actions. Baseline and HTTP execution remain distinct;
   explicit restart, exact response text, and previous-revision results stay clear.
 - Interaction/accessibility: file tabs, keyboard resizing, theme switching,
   expandable controls, errors, imports, and mobile navigation are exercised.
-  Seven Chromium tests pass, including editor/result visibility and retained forms.
+  Ten Chromium tests pass, including editor/result visibility, retained forms,
+  formatting, and new OpenAPI/TypeScript operations that compile and execute.
+
+Coverage is Chromium on this Linux host. These targeted contrast checks and visual
+reviews do not claim a full accessibility audit or cross-browser certification.
 
 ## Verification
 
 - [x] Recheck desktop, mobile, light/dark, and HTTP layouts after visual fixes.
 - [x] Preserve authenticated create/read, checkpoints, async work, and reproduction.
-- [x] Pass typecheck, lint, build, 13 unit tests, and seven browser tests.
+- [x] Pass typecheck, lint, build, 16 unit tests, and ten browser tests.
 - [x] Run the downloaded workspace and reproduction bundle with the native CLI.
+- [x] Pass all five Rust repository checks again after the usability changes.

@@ -31,6 +31,7 @@ export interface State {
   bundles: BundleFiles[]
   busy: boolean
   error?: string
+  issueVersion: number
 }
 export function message(error: unknown): string {
   return error && typeof error === "object" && "message" in error
@@ -50,6 +51,7 @@ export class Playground {
     projectState: "loading",
     bundles: [],
     busy: false,
+    issueVersion: 0,
   }
   private listeners = new Set<() => void>()
   private compiler = new Engine()
@@ -70,7 +72,10 @@ export class Playground {
   }
   snapshot = () => this.state
   private set(patch: Partial<State>) {
-    this.state = { ...this.state, ...patch }
+    const issueVersion =
+      this.state.issueVersion +
+      (patch.error || patch.diagnostic || patch.storageError ? 1 : 0)
+    this.state = { ...this.state, ...patch, issueVersion }
     this.listeners.forEach((listener) => listener())
   }
   async initialize() {
@@ -366,6 +371,9 @@ export class Playground {
     } finally {
       this.set({ busy: false })
     }
+  }
+  reportError(error: unknown) {
+    this.set({ error: message(error) })
   }
   clearError() {
     this.set({ error: undefined })

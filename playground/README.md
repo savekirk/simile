@@ -30,11 +30,20 @@ performance budgets, and the browser CI matrix belong to the later tooling work.
   or quick-mode contract, attach HCL modules, and record project notes. Directory
   uploads and ZIPs preserve relative paths. Choose an entry when imports are
   ambiguous. Renaming does not rewrite imports or Simfile paths.
+- **Add operation / Guide:** open the contract, follow an OpenAPI or TypeScript
+  example, and compile a new route without leaving the runner. Guide also opens
+  baseline and HTTP tools and links to the relevant Simile documentation sections.
+- **Format:** format YAML, JSON, TypeScript, and Markdown with their own parsers.
+  HCL and Simfile formatting reindents lines while preserving comments, inline
+  blocks, and heredoc contents. Formatting is undoable and preserves large JSON
+  integer literals. Invalid documents show an error without replacing the text.
 - **Describe and Audit:** inspect the public catalogue and artifact counters;
   filter fidelity findings and apply the shared strict acceptance rule.
 - **Run:** synthesize or load a request, expand **Run settings** for a decimal seed and optional
   outcome/scenario, then capture a native reproduction bundle. Payload JSON remains
-  Rust-produced text; binary bodies and files remain bytes.
+  Rust-produced text; binary bodies and files remain bytes. Each operation keeps
+  its own request draft, so switching from POST to GET does not carry a body over.
+  The selected fixture stays visible and is marked modified after request edits.
 - **HTTP session:** explicitly start/restart a compiled revision. Provision caller
   profiles, opt in to applying their credentials, send HTTP requests, inspect
   backend state and the journal, advance manual time, and step work. Repeated
@@ -45,7 +54,8 @@ performance budgets, and the browser CI matrix belong to the later tooling work.
 
 Drag the divider, or focus it and use arrow keys, to resize the definition and
 execution panes. Narrow screens stack them vertically. Problems, Composition,
-Describe, Audit, and Reproduction open in a collapsible panel below the editor.
+Describe, Audit, Reproduction, and Guide open in a collapsible panel below the editor.
+Action, compilation, formatting, and storage errors automatically open Problems.
 Switching execution tabs preserves request inputs and results; new workspaces
 and successful imports start a fresh baseline form. Results from an earlier
 compiled revision are labelled.
@@ -110,7 +120,9 @@ python3 playground/scripts/check-handoff.py
 Set `CHROMIUM_PATH` to use an installed Chromium instead. Browser tests exercise
 the production bundle, real WASM, module Workers, IndexedDB reload, artifact
 imports, explicit revision switching, and the Orders proof loop. Unit tests cover
-stale compilations, delayed/failed saves, archive paths and exact values. Native
+stale compilations, delayed/failed saves, archive paths, exact values, and formatting.
+Browser checks cover new OpenAPI/TypeScript operations, fixture selection, error
+visibility, and cursor/text/control contrast in light and dark themes. Native
 coverage: `cargo test -p simile-core --test playground --locked`. Keep running all
 repository checks from `AGENTS.md` and both existing browser harnesses.
 The handoff check consumes the actual browser downloads and needs port 4242 free.

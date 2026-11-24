@@ -63,8 +63,9 @@ The first three implementation PRs are merged; the playground builds on `origin/
 
 - [x] Start from merged `origin/wasm` (`afe36cb`) and verify the fork destination.
 - [x] Rehearse an upstream update in an isolated checkout, repeated against the
-  latest fetched upstream `4fce2d9`. The first portability
-  commit conflicts in `Cargo.toml`, `Cargo.lock`, and `simile-service/src/lib.rs`
+  latest fetched upstream `12bf17b`. The first portability
+  commit conflicts in `Cargo.toml`, `Cargo.lock`, `crates/simile-service/src/lib.rs`,
+  and `crates/simile-stack/Cargo.toml`
   with upstream's newer console/persistence changes. Abort the rehearsal and
   preserve the requested fork base; no upstream changes are published.
 - [x] Build the playground with shadcn 4.23.0, React, TypeScript, and CodeMirror.
@@ -96,6 +97,18 @@ The first three implementation PRs are merged; the playground builds on `origin/
 - [x] Compare rendered desktop, mobile, light/dark, and HTTP layouts against the
   supplied playground references. See `playground/design-qa.md`. All five Rust
   checks and frontend typecheck, lint, build, and 13 unit tests pass again.
+- [x] Make the editor cursor visible in both themes and strengthen light-theme
+  text and field borders. Chromium asserts text contrast of at least 4.5:1 and
+  cursor/field-border contrast of at least 3:1 on the reviewed surfaces.
+- [x] Open Problems automatically for action, compilation, formatting, and storage
+  errors, including repeated errors after collapsing the panel.
+- [x] Keep separate operation drafts and retain fixture selection. Switching from
+  POST to GET synthesizes a body-free request; a manually supplied invalid body
+  still reports the contract error. Existing drafts survive operation switches.
+- [x] Add file-type formatting and a Guide with contract examples, actions, and
+  verified documentation section links. Browser tests add and run new OpenAPI and
+  TypeScript operations. Sixteen unit tests and ten Chromium tests pass, along
+  with typecheck, lint, build, all five Rust checks, and native export handoff.
 
 ## Decisions and tradeoffs
 
@@ -154,6 +167,13 @@ The first three implementation PRs are merged; the playground builds on `origin/
   resets the baseline form without replacing the active HTTP service.
 - Added the current shadcn Resizable component using `react-resizable-panels`
   rather than custom drag/keyboard handling.
+- Lazy-load the existing Prettier parsers for YAML, JSON, TypeScript, and Markdown.
+  JSON formatting does not round-trip numbers through JavaScript values. HCL uses
+  conservative indentation rather than canonical rewriting, preserving comments,
+  inline blocks, and heredoc contents without adding another parser dependency.
+- New operations are authored in the contract. The Add operation action opens
+  examples and the contract, keeping the source as the single definition instead
+  of maintaining a separate form-generated representation.
 - No user decisions are currently blocking work.
 
 ## What was achieved
@@ -170,7 +190,8 @@ The first three implementation PRs are merged; the playground builds on `origin/
 - Phase 4: the playground implements authoring, inspection, audit, baseline runs,
   stateful HTTP, profiles, work, reproduction suites, and explicit persistence.
   Definition and execution now share a resizable workspace inspired by the
-  supplied playground screenshots.
+  supplied playground screenshots. Per-operation requests, visible diagnostics,
+  file-type formatting, contextual help, and both-theme readability are verified.
 
 ## Exit gate
 
@@ -188,11 +209,13 @@ The first three implementation PRs are merged; the playground builds on `origin/
   retry run through the exported API. Expired and replaced work handles reject
   without changing state; renewed handles still complete or retry exactly once.
 
-- Phase 4: passed locally. Seven production-browser tests verify authoring, audit,
+- Phase 4: passed locally. Ten production-browser tests verify authoring, audit,
   profile setup, authenticated create/read, time/work, checkpoint reload, baseline
-  capture, replay/conformance, imports, revision isolation, and storage recovery.
-  Thirteen frontend unit tests cover persistence races, incompatible cached
-  artifacts, paths, and lossless values. Native tests verify credential attachment
+  capture, replay/conformance, imports, revision isolation, storage recovery,
+  new operation authoring, per-operation drafts, formatting, visible errors, and
+  light/dark contrast. Sixteen frontend unit tests cover persistence races,
+  incompatible cached artifacts, paths, lossless values, and formatting.
+  Native tests verify credential attachment
   and read-only inspection; exported workspaces and bundles run with the CLI.
   The PR targets `wasm`. The previous revision passed all six fork CI jobs;
-  refreshed CI will verify the layout revision.
+  refreshed CI will verify the usability revision.

@@ -289,7 +289,9 @@ function RequestPanel({ model, state }: { model: Playground; state: State }) {
     ["Content-Type", "application/json"],
   ])
   const [body, setBody] = useState('{"product":"licensed_beat","quantity":2}'),
-    [mode, setMode] = useState("text"),
+    [mode, setMode] = useState(
+      ["GET", "HEAD"].includes(route?.method ?? "GET") ? "absent" : "text"
+    ),
     [binary, setBinary] = useState<Uint8Array>()
   const [seed, setSeed] = useState("7"),
     [response, setResponse] = useState<HttpExchange>(),
@@ -533,7 +535,12 @@ function RequestPanel({ model, state }: { model: Playground; state: State }) {
           </Field>
           {mode === "text" && (
             <div className="editor-panel">
-              <Editor path="http-body.json" value={body} onChange={setBody} />
+              <Editor
+                path="http-body.json"
+                value={body}
+                onChange={setBody}
+                onError={(error) => model.reportError(error)}
+              />
             </div>
           )}
           {mode === "file" && (

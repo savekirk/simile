@@ -12,11 +12,11 @@ import {
   BracesIcon,
   ChevronUpIcon,
   XIcon,
+  BookOpenIcon,
 } from "lucide-react"
 import { Button } from "./components/ui/button"
 import { Badge } from "./components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs"
-import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert"
 import { FieldGroup } from "./components/ui/field"
 import { Separator } from "./components/ui/separator"
 import { TooltipProvider } from "./components/ui/tooltip"
@@ -44,6 +44,7 @@ import {
 import { Author, Composition, Diagnostics } from "./views/author"
 import { Inspect, Audit } from "./views/inspect"
 import { Runner, Reproduction } from "./views/runner"
+import { Guide } from "./views/guide"
 import { Workbench } from "./views/workbench"
 import { Playground } from "./model/controller"
 import {
@@ -63,7 +64,14 @@ import { Engine } from "./worker/client"
 import { useTheme } from "./components/theme-provider"
 const model = new Playground()
 void model.initialize()
-const tools = ["Problems", "Composition", "Describe", "Audit", "Reproduction"]
+const tools = [
+  "Problems",
+  "Composition",
+  "Describe",
+  "Audit",
+  "Reproduction",
+  "Guide",
+]
 const narrowScreen = window.matchMedia("(max-width: 900px)")
 const subscribeScreen = (notify: () => void) => {
   narrowScreen.addEventListener("change", notify)
@@ -109,7 +117,9 @@ export default function App() {
     () => narrowScreen.matches
   )
   const [tool, setTool] = useState("Problems"),
-    [toolOpen, setToolOpen] = useState(false),
+    [toolOpen, setToolOpen] = useState(
+      Boolean(state.error || state.diagnostic || state.storageError)
+    ),
     [runView, setRunView] = useState("Run"),
     [runnerVersion, setRunnerVersion] = useState(0),
     [selected, setSelected] = useState("orders.yaml"),
@@ -122,6 +132,17 @@ export default function App() {
     selected in state.project.files
       ? selected
       : (Object.keys(state.project.files)[0] ?? "")
+  const issue = [state.diagnostic, state.error, state.storageError]
+    .filter(Boolean)
+    .join("\n")
+  const [seenIssue, setSeenIssue] = useState(state.issueVersion)
+  if (state.issueVersion !== seenIssue) {
+    setSeenIssue(state.issueVersion)
+    if (issue) {
+      setTool("Problems")
+      setToolOpen(true)
+    }
+  }
   const artifact = state.candidate
   async function importFiles(items: { path: string; file: File }[]) {
     if (!items.length) return
@@ -463,21 +484,34 @@ export default function App() {
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Toggle color theme"
-              onClick={() =>
-                setTheme(
-                  document.documentElement.classList.contains("dark")
-                    ? "light"
-                    : "dark"
-                )
-              }
-            >
-              <SunIcon className="hidden dark:block" />
-              <MoonIcon className="dark:hidden" />
-            </Button>
+            <div className="header-help">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setTool("Guide")
+                  setToolOpen(true)
+                }}
+              >
+                <BookOpenIcon data-icon="inline-start" />
+                Guide
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Toggle color theme"
+                onClick={() =>
+                  setTheme(
+                    document.documentElement.classList.contains("dark")
+                      ? "light"
+                      : "dark"
+                  )
+                }
+              >
+                <SunIcon className="hidden dark:block" />
+                <MoonIcon className="dark:hidden" />
+              </Button>
+            </div>
             <input
               ref={upload}
               className="sr-only"
@@ -526,28 +560,6 @@ export default function App() {
         <div className="workspace-shell">
           <aside className="project-sidebar">{tree}</aside>
           <main className="main-panel">
-            {state.error && (
-              <Alert variant="destructive" className="app-alert">
-                <AlertTitle>Action could not complete</AlertTitle>
-                <AlertDescription>
-                  {state.error}
-                  <Button variant="ghost" onClick={() => model.clearError()}>
-                    Dismiss
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            )}
-            {state.storageError && (
-              <Alert variant="destructive" className="app-alert">
-                <AlertTitle>Browser storage unavailable</AlertTitle>
-                <AlertDescription>
-                  {state.storageError} Edits and the live session remain usable.
-                  <Button variant="outline" onClick={() => model.retrySave()}>
-                    Retry project save
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            )}
             <ResizablePanelGroup
               orientation={narrow ? "vertical" : "horizontal"}
               className="studio-panels"
@@ -563,6 +575,10 @@ export default function App() {
                     state={state}
                     file={file}
                     onSelectFile={setSelected}
+                    onAddOperation={() => {
+                      setTool("Guide")
+                      setToolOpen(true)
+                    }}
                   />
                   <Tabs
                     value={tool}
@@ -582,10 +598,10 @@ export default function App() {
                               onClick={() => setToolOpen(true)}
                             >
                               {name}
-                              {name === "Problems" && state.diagnostic && (
+                              {name === "Problems" && issue && (
                                 <span
                                   className="problem-dot"
-                                  aria-label="Compilation error"
+                                  aria-hidden="true"
                                 />
                               )}
                             </TabsTrigger>
@@ -604,8 +620,20 @@ export default function App() {
                       </Button>
                     </div>
                     <div className="tool-body" hidden={!toolOpen}>
+                      <TabsContent value="Guide" keepMounted>
+                        <Guide
+                          state={state}
+                          onOpenFile={setSelected}
+                          onRun={() => setRunView("Run")}
+                          onHttp={() => setRunView("HTTP")}
+                        />
+                      </TabsContent>
                       <TabsContent value="Problems" keepMounted>
-                        <Diagnostics state={state} onSelectFile={setSelected} />
+                        <Diagnostics
+                          model={model}
+                          state={state}
+                          onSelectFile={setSelected}
+                        />
                       </TabsContent>
                       <TabsContent value="Composition" keepMounted>
                         <Composition model={model} state={state} />
