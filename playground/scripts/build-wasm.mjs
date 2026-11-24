@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process"
 import { resolve } from "node:path"
+import { parseArgs } from "node:util"
 const root = resolve(import.meta.dirname, "../..")
+const { values } = parseArgs({ options: { release: { type: "boolean" } } })
+const profile = values.release ? "release" : "debug"
+const wasm = `target/wasm32-unknown-unknown/${profile}/simile_wasm.wasm`
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: root, stdio: "inherit" })
   if (result.error) throw result.error
@@ -20,13 +24,14 @@ run("cargo", [
   "simile-wasm",
   "--target",
   "wasm32-unknown-unknown",
+  ...(values.release ? ["--release"] : []),
 ])
 run("wasm-bindgen", [
   "--target",
   "web",
   "--out-dir",
   "playground/src/wasm",
-  "target/wasm32-unknown-unknown/debug/simile_wasm.wasm",
+  wasm,
 ])
 // The shared Worker source and its standalone harness resolve declarations here.
 run("wasm-bindgen", [
@@ -34,5 +39,5 @@ run("wasm-bindgen", [
   "web",
   "--out-dir",
   "crates/simile-wasm/pkg",
-  "target/wasm32-unknown-unknown/debug/simile_wasm.wasm",
+  wasm,
 ])

@@ -131,6 +131,15 @@ The first three implementation PRs are merged; the playground builds on `origin/
   explain ownership, messages, compilation, sessions, and persistence, with seven
   rendered Mermaid diagrams and an ASCII screen map. Local links and all five
   repository checks pass.
+- [x] Deploy the playground to `https://similator.dela.dev` with the `cf` CLI.
+  The static-assets Worker owns the custom domain; HTTPS and the WASM MIME type
+  are verified. Production uses the existing Rust release profile (8,408,136-byte
+  WASM) to fit Cloudflare's 25 MiB limit. Development defaults remain unchanged.
+- [x] Verify the deployed release with all 13 Chromium tests, including both-theme
+  contrast, Petstore, profiles, checkpoints, and recovery. Its exported workspace
+  and bundle pass native handoff. Local release tests, 21 unit tests, typecheck,
+  lint, build, and all five repository checks pass. Cloudflare version:
+  `3368f291-ba84-4816-9807-06f76353fa6e`.
 
 ## Decisions and tradeoffs
 
@@ -175,8 +184,12 @@ The first three implementation PRs are merged; the playground builds on `origin/
   second WASM instance; measure memory and optimize in the later tooling work.
 - Retain payload JSON as text instead of parsing and re-serializing it in React.
   Structured catalogue and bounded counters are safe UI metadata.
-- Use the existing debug WASM build for this UI foundation. Production profile
-  experiments and cross-browser CI expansion remain for the build-tooling phase.
+- Keep debug WASM for local development and the default build. Use the existing
+  Rust release profile for Cloudflare deployment because debug WASM exceeds the
+  static-asset size limit. Further optimization and broader browser CI remain
+  separate work. Serve only static assets on Cloudflare; the Simile runtime and
+  persistence stay in the browser. Configuration and `pnpm run deploy` make
+  deployment repeatable without adding a server or changing native defaults.
 - Templates keep principal setup in the Simfile and contract-defined webhooks in
   OpenAPI. Explicit database effects accompany async effects so create/read works.
 - Saved source files and notes survive an incompatible cached artifact. Storage
@@ -226,6 +239,7 @@ The first three implementation PRs are merged; the playground builds on `origin/
   file-type formatting, contextual help, and both-theme readability are verified.
   Petstore is available as a bundled sample, and compiler failures are recoverable.
   Linked architecture guides explain the WASM host and playground workflows.
+  The release playground is hosted on Cloudflare at `similator.dela.dev`.
 
 ## Exit gate
 
@@ -256,3 +270,5 @@ The first three implementation PRs are merged; the playground builds on `origin/
   The PR targets `wasm`. The implementation revision `487d33d` passed all six fork
   CI jobs, including compiler recovery and the Petstore sample. Architecture
   documentation has validated diagrams and source links; repository checks pass.
+  The Cloudflare deployment passes the complete browser suite over HTTPS and the
+  native checks using files exported from the public site.

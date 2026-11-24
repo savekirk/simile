@@ -224,7 +224,12 @@ flowchart TD
 `crates/simile-wasm/pkg/`. [vite.config.ts](vite.config.ts) aliases the shared
 Worker's binding import to `src/wasm/`, emits ES module Workers, and uses a relative
 asset base. `pnpm build` builds WASM, checks TypeScript, and produces the static app.
-Current WASM builds use Cargo's debug profile; release optimization is separate work.
+Development and the default build use Cargo's debug profile. `build:production`
+selects the existing release profile, producing an asset below Cloudflare's 25 MiB
+file limit. `pnpm run deploy` builds that release bundle and publishes `dist/` with
+the `cf` CLI using [cloudflare.config.ts](cloudflare.config.ts). The Cloudflare
+Worker serves static assets at `similator.dela.dev`; the two Simile Workers in the
+runtime diagram still execute in the user's browser.
 
 Unit tests cover controller races, Worker recovery, committed persistence,
 archives, formatting, and lossless request edits. Playwright runs the production
@@ -233,4 +238,5 @@ and light/dark UI checks. [check-handoff.py](scripts/check-handoff.py) consumes 
 browser's actual exported files and verifies native registration, setup, an
 authenticated HTTP create/read sequence, and bundle replay. The shared crate's
 browser harness separately verifies the Worker contract. Commands are in the
-[README verification section](README.md#verify).
+[README verification section](README.md#verify). Setting `PLAYGROUND_BASE_URL`
+points Playwright at a deployed build and skips the local preview server.

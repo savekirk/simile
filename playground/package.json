@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "pnpm build:wasm && vite --host 127.0.0.1",
     "build": "pnpm build:wasm && tsc -b && vite build",
+    "build:production": "node scripts/build-wasm.mjs --release && tsc -b && vite build",
+    "deploy": "pnpm build:production && cf deploy dist",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc -b",

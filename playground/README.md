@@ -30,8 +30,38 @@ pnpm --dir playground dev
 `build:wasm` generates ignored bindings in `src/wasm/` and the standalone binding
 harness's `pkg/` directory. `build` produces a static site in `dist/`; serve it over
 HTTP with the WASM MIME type. `preview` serves the production build locally.
-The current build uses the existing debug WASM profile. Release-size tuning,
-performance budgets, and the browser CI matrix belong to the later tooling work.
+Development and the default `build` use the debug WASM profile. `build:production`
+uses the existing Rust release profile, keeping the WASM asset below Cloudflare's
+25 MiB file limit. Further size tuning and performance budgets remain separate work.
+
+## Deploy to Cloudflare
+
+The deployment target is [similator.dela.dev](https://similator.dela.dev).
+With the `cf` CLI installed and authenticated to the configured account, run:
+
+```sh
+pnpm --dir playground run deploy
+```
+
+This builds the release WASM and static app, then runs `cf deploy dist` from the
+playground directory. [cloudflare.config.ts](cloudflare.config.ts) selects the
+`similator` Worker, account, and custom domain. Cloudflare serves static assets and
+manages the domain's DNS/TLS; Simile's engine still runs in browser module Workers.
+There is no server-side Simile runtime, database, or webhook sender in this deployment.
+The `workers.dev` and preview URLs are disabled.
+
+To inspect a build before upload, run `pnpm --dir playground build:production`,
+then `cf deploy dist --dry-run` from `playground/`. Deploy without rebuilding with
+`cf deploy dist`. Generated Cloudflare output is ignored by Git.
+
+Run the same browser suite against the deployed site without starting a local server:
+
+```sh
+PLAYGROUND_BASE_URL=https://similator.dela.dev pnpm --dir playground test:e2e
+```
+
+Each test uses its own browser context and local storage; the tests exercise
+simulated HTTP locally in WASM, including the bundled Petstore sample.
 
 ## Workflow
 
