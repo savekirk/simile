@@ -91,6 +91,8 @@ impl ArtifactHandle {
         }
         let routes = self.artifact.operations().map(|operation| serde_json::json!({
             "key": operation.key(), "method": operation.method(), "path": operation.path(), "operationId": operation.operation_id(),
+            "effects": self.artifact.effects_for(operation.key()).count(),
+            "webhooks": self.artifact.effects_for(operation.key()).map(|effect| effect.webhooks().len()).sum::<usize>(),
             "parameters": operation.parameters().map(|parameter| serde_json::json!({
                 "name": parameter.name(), "location": parameter.location(), "required": parameter.is_required(),
                 "style": parameter.style(), "explode": parameter.explode(), "allowReserved": parameter.allow_reserved(),
@@ -100,6 +102,7 @@ impl ArtifactHandle {
             "revision": summary.payload_sha256, "formatVersion": summary.format_version,
             "service": summary.service, "serviceVersion": summary.service_version,
             "operations": summary.operations, "catalogue": catalogue, "routes": routes,
+            "counters": {"schemaNodes":summary.schema_nodes,"effects":summary.effects,"webhooks":summary.webhooks,"backends":summary.resources,"principals":summary.principals,"outcomes":summary.outcomes,"asyncOperations":summary.async_operations},
             "audit": ops::audit_artifact(&self.artifact).map_err(core_error)?, "metadata": self.metadata,
         }))
     }

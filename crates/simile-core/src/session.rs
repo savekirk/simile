@@ -370,6 +370,17 @@ impl ServiceSession {
         self.changed();
         Ok(retrying)
     }
+
+    pub fn redeliver_dead_letter(&self) -> Result<bool> {
+        let letter = self.service.dead_letters(1)?.pop();
+        self.changed();
+        if let Some(letter) = letter {
+            self.service.redeliver(&letter)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
 }
 
 fn work_error(error: simile_service::Error) -> Error {

@@ -5,7 +5,8 @@ export class SimileClient {
   private generation = "0";
   private nextId = 0n;
   private queue: Promise<unknown> = Promise.resolve();
-  constructor(private readonly worker: Worker) {}
+  private readonly worker: Worker;
+  constructor(worker: Worker) { this.worker = worker; }
 
   call<K extends keyof Methods>(method: K, input: Methods[K]["input"]): Promise<Methods[K]["output"]> {
     const next = this.queue.then(() => new Promise<Methods[K]["output"]>((resolve, reject) => {

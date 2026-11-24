@@ -44,6 +44,8 @@ function dispatch(message: Request): unknown {
       return status;
     }
     case "status": return active().status();
+    case "inspectWork": return active().inspectWork();
+    case "redeliverDeadLetter": return active().redeliverDeadLetter();
     case "handleRequest": return active().handleRequest(message.input);
     case "setupProfile": return active().setupProfile(message.input);
     case "listProfiles": return active().listProfiles();

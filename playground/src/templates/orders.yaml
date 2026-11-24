@@ -1,0 +1,97 @@
+openapi: 3.1.0
+info:
+  title: Orders
+  version: 1.0.0
+  description: A small Orders API for exploring authentication, state, and deferred work.
+components:
+  securitySchemes:
+    apiKey: { type: apiKey, in: header, name: X-API-Key }
+  schemas:
+    Order:
+      type: object
+      required: [id, product, quantity]
+      properties:
+        id: { type: string, pattern: "^ord_[a-z]{12}$" }
+        product: { type: string }
+        quantity: { type: integer, minimum: 1, maximum: 20 }
+paths:
+  /applications:
+    post:
+      operationId: createApplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201":
+          description: Application registered
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id: { type: string, pattern: "^app_[a-z]{12}$" }
+  /orders:
+    post:
+      operationId: createOrder
+      description: Create an order and schedule its public notification.
+      security: [{ apiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product, quantity]
+              properties:
+                product: { type: string }
+                quantity: { type: integer, minimum: 1, maximum: 20 }
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+    get:
+      operationId: listOrders
+      security: [{ apiKey: [] }]
+      responses:
+        "200":
+          description: Order collection
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+  /orders/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getOrder
+      security: [{ apiKey: [] }]
+      responses:
+        "200":
+          description: Order found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "404": { description: Order not found }
+webhooks:
+  order.created:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Order" }
+      responses:
+        "204": { description: Accepted }

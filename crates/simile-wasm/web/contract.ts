@@ -12,7 +12,7 @@ export interface Workspace {
 }
 export interface Diagnostic { code: string; message: string; file?: string }
 export interface Parameter { name: string; location: "path" | "query" | "header" | "cookie"; required: boolean; style: string; explode: boolean; allowReserved: boolean }
-export interface Route { key: string; method: string; path: string; operationId: string | null; parameters: Parameter[] }
+export interface Route { key: string; method: string; path: string; operationId: string | null; parameters: Parameter[]; effects: number; webhooks: number }
 export interface NamedDescription { name: string; description?: string }
 export interface OperationDescription {
   key: string; operationId?: string; description?: string; behaviorSource: string; secured: boolean;
@@ -48,6 +48,7 @@ export interface AuditReport {
 export interface ArtifactView {
   revision: string; formatVersion: number; service: string; serviceVersion: string;
   operations: number; routes: Route[];
+  counters: { schemaNodes: number; effects: number; webhooks: number; backends: number; principals: number; outcomes: number; asyncOperations: number };
   catalogue: Catalogue;
   audit: AuditReport;
   metadata: { service: string; source: string; listen?: string; reportingEndpoint?: string } | null;
@@ -72,6 +73,7 @@ export interface SessionStatus {
 }
 export interface HttpRequest {
   method: string; uri: string; headers?: Header[]; body?: Uint8Array; responseSeed?: Decimal;
+  profile?: string;
 }
 export interface HttpExchange {
   status: number; headers: Header[]; body: Uint8Array; seed: Decimal;
@@ -88,7 +90,10 @@ export type JournalOutcome = { status: "succeeded" } | { status: "failed"; code:
 export interface StateView { reportJson: string; resources: string[]; totalEvents: number; events: { sequence: Decimal; commandId: Decimal; at: Decimal; resource: string; action: string; outcome: JournalOutcome }[] }
 export interface WorkItem { handle: string; id: string; name: string; kind: "async" | "webhook"; attempt: number; workJson: string }
 export interface PreparedWebhook { method: string; uri: string; headers: Header[]; body: Uint8Array }
+export interface WorkInspection { id: string; name: string; kind: "async" | "webhook"; deadLetter: boolean; leased: boolean; availableAt: Decimal; readiness: "ready" | "waiting" | "blocked"; workJson: string }
 export interface Methods {
+  inspectWork: { input: Record<string, never>; output: WorkInspection[] };
+  redeliverDeadLetter: { input: Record<string, never>; output: { redelivered: boolean; status: SessionStatus } };
   compileWorkspace: { input: Workspace; output: ArtifactResult };
   loadArtifact: { input: { bytes: Uint8Array }; output: ArtifactResult };
   synthesizeRequest: { input: { revision: string; options: { selector: Selector; seed?: Decimal; contentType?: string } }; output: { seed: Decimal; requestDocJson: string; contentType?: string; body?: Uint8Array } };
@@ -155,4 +160,4 @@ export function validateRequest(value: unknown): asserts value is Request {
     (message.input as unknown[]).forEach(bundle);
   }
 }
-const methods = new Set<string>(["compileWorkspace", "loadArtifact", "synthesizeRequest", "runOperation", "replayBundle", "runConformance", "startSession", "status", "handleRequest", "setupProfile", "listProfiles", "inspectState", "advanceClock", "resetState", "exportCheckpoint", "restoreCheckpoint", "stepWork", "prepareWebhook", "executeWork", "acknowledgeWork", "retryWork"]);
+const methods = new Set<string>(["inspectWork", "redeliverDeadLetter","compileWorkspace", "loadArtifact", "synthesizeRequest", "runOperation", "replayBundle", "runConformance", "startSession", "status", "handleRequest", "setupProfile", "listProfiles", "inspectState", "advanceClock", "resetState", "exportCheckpoint", "restoreCheckpoint", "stepWork", "prepareWebhook", "executeWork", "acknowledgeWork", "retryWork"]);

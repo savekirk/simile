@@ -295,6 +295,13 @@ impl Service {
         profile(&mut stack, name)
     }
 
+    /// Read credentials without adding query commands to the live journal.
+    pub fn profile_snapshot(&self, name: &str) -> Result<Option<ServiceProfile>> {
+        validate_profile_name(name)?;
+        let mut stack = Stack::from_snapshot(super::lock(&self.stack)?.snapshot()?);
+        profile(&mut stack, name)
+    }
+
     pub fn current_profile(&self) -> Result<Option<ServiceProfile>> {
         let mut stack = super::lock(&self.stack)?;
         let Some(name) = current_profile_name(&mut stack)? else {

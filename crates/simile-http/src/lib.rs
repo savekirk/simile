@@ -1,9 +1,11 @@
 #![forbid(unsafe_code)]
 //! Shared HTTP semantics. Hosts own byte collection, delays, sockets, and delivery.
+mod profile;
 mod webhook;
 pub use http;
 use http::header::{ALLOW, CONTENT_TYPE, COOKIE};
 use http::{HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode};
+pub use profile::{ProfileRequestError, apply_profile};
 use serde_json::json;
 use simile_artifact::Artifact;
 use simile_runtime::{

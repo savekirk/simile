@@ -1,8 +1,8 @@
 # Browser execution foundations
 
 Build and verify the portable Rust engine, shared application workflows, and a typed
-Worker API in three dependent pull requests. Browser UI and persistence integration
-remain outside this stack.
+Worker API, then the browser playground and explicit browser persistence.
+The first three implementation PRs are merged; the playground builds on `origin/wasm`.
 
 ## Phase 1 — Portable core
 
@@ -52,12 +52,36 @@ remain outside this stack.
 - [x] Pass formatting, Clippy, workspace tests, rustdoc, cargo-deny, and the
   portable dependency check under Rust 1.85. TypeScript compiles in strict mode.
 - [x] Publish [the WASM API PR](https://github.com/savekirk/simile/pull/4) against
-  `browser/shared-workflows`; verify all three bases. The prerequisite PRs have
-  since been merged; the remaining PR now targets `wasm` and stays open for review.
+  `browser/shared-workflows`; verify all three bases. All three PRs have since
+  been merged into `wasm`.
 - [x] Inspect the final fork CI results. All six jobs pass on each implementation
   revision: [portable core](https://github.com/savekirk/simile/actions/runs/45288474136),
   [shared workflows](https://github.com/savekirk/simile/actions/runs/45288472817), and
   [WASM API](https://github.com/savekirk/simile/actions/runs/45288997179).
+
+## Phase 4 — Browser playground
+
+- [x] Start from merged `origin/wasm` (`afe36cb`) and verify the fork destination.
+- [x] Rehearse an upstream update in an isolated checkout. The first portability
+  commit conflicts in `Cargo.toml`, `Cargo.lock`, and `simile-service/src/lib.rs`
+  with upstream's newer console/persistence changes. Abort the rehearsal and
+  preserve the requested fork base; no upstream changes are published.
+- [x] Build six focused views with shadcn 4.23.0, React, TypeScript, and CodeMirror.
+- [x] Separate compiler and runtime Workers, coalesce recompiles, reject stale
+  responses, and require explicit runtime revision replacement.
+- [x] Support file/folder/ZIP imports, artifact mode, runnable workspace exports,
+  decimal seeds, exact payload text/bytes, profiles, and simulated work outcomes.
+- [x] Save projects and explicit checkpoints through completed IndexedDB
+  transactions. Reject stale save acknowledgements and preserve state on failure.
+- [x] Verify native profile credentials and non-mutating work inspection; check
+  retries and dead-letter redelivery through shared service logic.
+- [x] Verify the complete Orders proof loop, artifact/bundle imports, revision
+  switching, storage failure/retry, and mobile layout in six Chromium tests.
+- [x] Verify the actual browser ZIP downloads natively: register, provision,
+  authenticated create/read over TCP, and reproduction replay all pass.
+- [x] Pass all five repository checks, portable dependency checks, five browser
+  Rust tests, 146 Worker assertions, and frontend typecheck/lint/build/unit checks.
+- [ ] Publish the playground PR on origin and inspect its CI results.
 
 ## Decisions and tradeoffs
 
@@ -97,6 +121,17 @@ remain outside this stack.
   Inputs are cloned; only response-owned buffers are transferred.
 - Keep workspace unsafe-code lints intact: the pinned binding macro needs no
   exception. Pin TypeScript and the binding toolchain for reproducible harnesses.
+- Keep compile cancellation isolated from the runtime by using two Workers.
+  Runtime restart is explicit and discards unsaved runtime state. This costs a
+  second WASM instance; measure memory and optimize in the later tooling work.
+- Retain payload JSON as text instead of parsing and re-serializing it in React.
+  Structured catalogue and bounded counters are safe UI metadata.
+- Use the existing debug WASM build for this UI foundation. Production profile
+  experiments and cross-browser CI expansion remain for the build-tooling phase.
+- Templates keep principal setup in the Simfile and contract-defined webhooks in
+  OpenAPI. Explicit database effects accompany async effects so create/read works.
+- Saved source files and notes survive an incompatible cached artifact. Storage
+  retries reopen failed database connections; only committed saves show as saved.
 - No user decisions are currently blocking work.
 
 ## What was achieved
@@ -108,7 +143,10 @@ remain outside this stack.
   regression tests pass.
 - Phase 3: typed WASM/Worker APIs expose compilation, artifact inspection, baseline
   and conformance runs, profiles, HTTP sessions, work, reset, and checkpoints.
-  Browser UI, IndexedDB, outbound delivery, and release tooling remain deferred.
+  Outbound delivery and release tooling remain deferred.
+
+- Phase 4: the playground implements authoring, inspection, audit, baseline runs,
+  stateful HTTP, profiles, work, reproduction suites, and explicit persistence.
 
 ## Exit gate
 
@@ -125,3 +163,11 @@ remain outside this stack.
   Request synthesis feeds baseline execution; causal work completion and delayed
   retry run through the exported API. Expired and replaced work handles reject
   without changing state; renewed handles still complete or retry exactly once.
+
+- Phase 4: passed locally. Six production-browser tests verify authoring, audit,
+  profile setup, authenticated create/read, time/work, checkpoint reload, baseline
+  capture, replay/conformance, imports, revision isolation, and storage recovery.
+  Thirteen frontend unit tests cover persistence races, incompatible cached
+  artifacts, paths, and lossless values. Native tests verify credential attachment
+  and read-only inspection; exported workspaces and bundles run with the CLI.
+  Publication and CI verification are pending.

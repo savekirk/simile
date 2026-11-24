@@ -120,6 +120,15 @@ pub(crate) struct QueueEngine {
 }
 
 impl QueueEngine {
+    pub(crate) fn messages(&self, resource: &str) -> Vec<QueueMessage> {
+        self.resources
+            .get(resource)
+            .into_iter()
+            .flatten()
+            .map(StoredMessage::public)
+            .collect()
+    }
+
     pub(crate) fn lease_is_current(
         &self,
         resource: &str,

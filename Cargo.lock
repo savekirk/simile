@@ -1581,6 +1581,7 @@ dependencies = [
 name = "simile-http"
 version = "0.4.0"
 dependencies = [
+ "base64",
  "form_urlencoded",
  "http",
  "percent-encoding",

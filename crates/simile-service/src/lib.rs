@@ -53,6 +53,16 @@ pub enum DependencyReadiness {
     Blocked,
 }
 
+/// A read-only view of deferred work. Payloads remain JSON text at browser boundaries.
+pub struct WorkInspection {
+    pub id: String,
+    pub work: DeferredWork,
+    pub dead_letter: bool,
+    pub leased: bool,
+    pub available_at: i64,
+    pub readiness: DependencyReadiness,
+}
+
 /// One running service: public operations, declared backends, and durable state.
 pub struct Service {
     runtime: Runtime,
@@ -369,6 +379,42 @@ impl Service {
     pub fn validate_work_lease(&self, lease: &WorkLease) -> Result<()> {
         let stack = lock(&self.stack)?;
         validate_lease(&stack, OUTBOX, lease)
+    }
+
+    pub fn inspect_work(&self) -> Result<Vec<WorkInspection>> {
+        let (now, messages) = {
+            let stack = lock(&self.stack)?;
+            let now = stack.snapshot()?.clock().now;
+            let mut messages = Vec::new();
+            for (queue, dead_letter) in [(OUTBOX, false), (DEAD_LETTERS, true)] {
+                for message in
+                    stack.queue_messages(&ResourceAddress::new(ResourceKind::Queue, queue)?)?
+                {
+                    messages.push((message, dead_letter));
+                }
+            }
+            (now, messages)
+        };
+        messages
+            .into_iter()
+            .map(|(message, dead_letter)| {
+                let work = serde_json::from_value(message.body)
+                    .map_err(|error| Error::InvalidWork(error.to_string()))?;
+                let lease = WorkLease {
+                    message_id: message.id.clone(),
+                    receipt_handle: String::new(),
+                    work,
+                };
+                Ok(WorkInspection {
+                    id: message.id,
+                    readiness: self.dependency_readiness(&lease)?,
+                    work: lease.work,
+                    dead_letter,
+                    leased: message.receipt_handle.is_some() && message.available_at > now,
+                    available_at: message.available_at.as_unix_millis(),
+                })
+            })
+            .collect()
     }
 
     fn execute_leased_work(&self, lease: &WorkLease, acknowledge: bool) -> Result<()> {

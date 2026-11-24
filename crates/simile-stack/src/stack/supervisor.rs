@@ -97,6 +97,17 @@ impl Stack {
         &self.journal
     }
 
+    /// Inspect pending and leased messages without changing the queue or journal.
+    pub fn queue_messages(&self, resource: &ResourceAddress) -> Result<Vec<crate::QueueMessage>> {
+        if !self.resources.contains(resource) || resource.kind != simile_spec::ResourceKind::Queue {
+            return Err(ResourceError::new(
+                ErrorCode::UndeclaredResource,
+                "expected a declared queue",
+            ));
+        }
+        Ok(self.queue.messages(&resource.name))
+    }
+
     /// Inspect a queue receipt without executing a command or changing the journal.
     pub fn queue_lease_is_current(
         &self,

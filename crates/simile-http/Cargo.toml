@@ -10,6 +10,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+base64 = "0.23.1"
 http.workspace = true
 form_urlencoded.workspace = true
 percent-encoding.workspace = true

@@ -34,6 +34,7 @@ struct HttpRequest {
     headers: Vec<(String, serde_bytes::ByteBuf)>,
     body: Option<serde_bytes::ByteBuf>,
     response_seed: Option<String>,
+    profile: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -103,6 +104,31 @@ impl BrowserSession {
         to_js(&self.inner.status().map_err(core_error)?)
     }
 
+    #[wasm_bindgen(js_name = inspectWork)]
+    pub fn inspect_work(&self) -> Result<JsValue> {
+        let items = self
+            .inner
+            .service()
+            .inspect_work()
+            .map_err(|value| error("work_inspection", value))?;
+        let items = items.into_iter().map(|item| {
+            Ok(serde_json::json!({"id":item.id,"name":item.work.name(),
+                "kind": match item.work { simile_service::DeferredWork::Async { .. } => "async", _ => "webhook" },
+                "deadLetter":item.dead_letter,"leased":item.leased,"availableAt":item.available_at.to_string(),
+                "readiness": match item.readiness { simile_service::DependencyReadiness::Ready => "ready", simile_service::DependencyReadiness::Waiting => "waiting", simile_service::DependencyReadiness::Blocked => "blocked" },
+                "workJson":json(&item.work)?}))
+        }).collect::<Result<Vec<_>>>()?;
+        to_js(&items)
+    }
+
+    #[wasm_bindgen(js_name = redeliverDeadLetter)]
+    pub fn redeliver_dead_letter(&self) -> Result<JsValue> {
+        let redelivered = self.inner.redeliver_dead_letter().map_err(core_error)?;
+        to_js(
+            &serde_json::json!({"redelivered":redelivered,"status":self.inner.status().map_err(core_error)?}),
+        )
+    }
+
     #[wasm_bindgen(js_name = handleRequest)]
     pub fn handle_request(&self, input: JsValue) -> Result<JsValue> {
         let input: HttpRequest = from_js(input)?;
@@ -113,11 +139,15 @@ impl BrowserSession {
         for (name, value) in &input.headers {
             request = request.header(name, value.as_ref());
         }
-        let request = request
+        let mut request = request
             .body(RequestBody::Bytes(
                 input.body.map_or_else(Vec::new, |value| value.into_vec()),
             ))
             .map_err(|value| error("invalid_http_request", value))?;
+        if let Some(profile) = input.profile {
+            simile_http::apply_profile(self.inner.service(), &profile, &mut request)
+                .map_err(|value| error("profile_credentials", value))?;
+        }
         let exchange = self.inner.handle_request_with_seed(request, response_seed);
         let transport = match exchange.transport {
             simile_runtime::TransportPlan::Respond => serde_json::json!({"kind":"respond"}),
